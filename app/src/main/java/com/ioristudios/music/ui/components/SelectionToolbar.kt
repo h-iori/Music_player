@@ -117,7 +117,7 @@ fun SelectionToolbar(
                                     modifier = Modifier.background(SurfaceDarkCard)
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold) },
+                                        text = { Text("Delete", color = Color.White, fontWeight = FontWeight.Bold) },
                                         onClick = {
                                             haptic.performClick()
                                             onDelete()

@@ -100,7 +100,7 @@ fun ConfirmationDialog(
                 }) {
                     Text(
                         text = "Cancel",
-                        color = TextSecondary,
+                        color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -119,6 +119,7 @@ fun ConfirmationDialog(
                 ) {
                     Text(
                         text = confirmText,
+                        color = Color.White,
                         fontWeight = FontWeight.SemiBold
                     )
                 }

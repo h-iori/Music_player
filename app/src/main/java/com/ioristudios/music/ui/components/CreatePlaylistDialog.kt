@@ -134,7 +134,7 @@ fun CreatePlaylistDialog(
                 }) {
                     Text(
                         text = "Cancel",
-                        color = TextSecondary,
+                        color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
                 }

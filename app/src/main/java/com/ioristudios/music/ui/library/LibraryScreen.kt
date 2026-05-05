@@ -68,6 +68,7 @@ import com.ioristudios.music.ui.theme.SurfaceGradientStart
 import com.ioristudios.music.ui.theme.TextMuted
 import com.ioristudios.music.ui.theme.TextSecondary
 import com.ioristudios.music.ui.components.SelectionToolbar
+import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 
 enum class SortMode(val label: String) {
@@ -116,6 +117,7 @@ fun LibraryScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     
     val allSongsSize = SampleData.songs.size
 
@@ -348,7 +350,7 @@ fun LibraryScreen(
             totalCount = filteredSongs.size,
             onClose = { viewModel.exitSelectionMode() },
             onSelectAll = { if (it) viewModel.selectAll() else viewModel.deselectAll() },
-            onDelete = { viewModel.deleteSelected() },
+            onDelete = { showDeleteConfirm = true },
             onShare = { viewModel.shareSelected() }
         )
 
@@ -357,6 +359,20 @@ fun LibraryScreen(
             SongOptionsSheet(
                 song = song,
                 onDismiss = { selectedSong = null }
+            )
+        }
+
+        // Delete confirmation
+        if (showDeleteConfirm) {
+            ConfirmationDialog(
+                title = "Delete Songs",
+                message = "Are you sure you want to delete ${selectedSongIds.size} selected songs? This action cannot be undone.",
+                confirmText = "Delete",
+                onConfirm = {
+                    viewModel.deleteSelected()
+                    showDeleteConfirm = false
+                },
+                onDismiss = { showDeleteConfirm = false }
             )
         }
     }
