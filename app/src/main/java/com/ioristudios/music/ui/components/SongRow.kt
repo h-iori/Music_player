@@ -54,8 +54,8 @@ fun SongRow(
         // Music note icon
         androidx.compose.foundation.layout.Box(
             modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(48.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(NeonPurpleFaint),
             contentAlignment = Alignment.Center
         ) {
@@ -63,7 +63,7 @@ fun SongRow(
                 imageVector = Icons.Filled.MusicNote,
                 contentDescription = null,
                 tint = NeonPurple,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
 
@@ -75,16 +75,16 @@ fun SongRow(
             Text(
                 text = song.title,
                 color = CoreWhiteDim,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = song.artist,
                 color = TextSecondary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Normal,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -94,8 +94,8 @@ fun SongRow(
         Text(
             text = song.formattedDuration(),
             color = TextMuted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Normal
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
         )
 
         // Menu button
@@ -107,7 +107,7 @@ fun SongRow(
                 imageVector = Icons.Filled.MoreVert,
                 contentDescription = "Options",
                 tint = TextSecondary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
     }

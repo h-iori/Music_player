@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +49,7 @@ import com.ioristudios.music.ui.components.SongRow
 import com.ioristudios.music.ui.theme.CoreWhiteDim
 import com.ioristudios.music.ui.theme.NeonPurple
 import com.ioristudios.music.ui.theme.NeonPurpleFaint
+import com.ioristudios.music.ui.theme.NeonPurpleGlow
 import com.ioristudios.music.ui.theme.NeonPurpleSubtle
 import com.ioristudios.music.ui.theme.SurfaceDarkCard
 import com.ioristudios.music.ui.theme.SurfaceGradientEnd
@@ -84,20 +86,36 @@ fun LibraryScreen(
             )
     ) {
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
         ) {
             // Header
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(top = 16.dp)
+                    .padding(top = 24.dp)
             ) {
                 Text(
-                    text = "Library",
-                    color = CoreWhiteDim,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "by IORI STUDIOS",
+                    color = NeonPurple,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Text(
+                    text = "Music",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = androidx.compose.ui.text.TextStyle(
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = NeonPurpleGlow,
+                            blurRadius = 30f
+                        )
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -172,8 +190,8 @@ fun LibraryScreen(
             // Song list
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredSongs, key = { it.id }) { song ->
                     SongRow(

@@ -4,3 +4,4 @@ gradle.properties
 /gradle
 /.gradle
 /app/build
+/.kotlin

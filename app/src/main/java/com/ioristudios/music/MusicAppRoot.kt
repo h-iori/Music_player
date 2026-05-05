@@ -54,7 +54,7 @@ fun MusicAppRoot() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(bottom = innerPadding.calculateBottomPadding())
             ) {
                 NavHost(
                     navController = navController,
