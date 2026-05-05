@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicOff
@@ -31,15 +33,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -77,6 +84,29 @@ fun LibraryScreen(
     val sortMode by viewModel.sortMode.collectAsState()
     val filteredSongs by viewModel.filteredSongs.collectAsState()
     
+    val listState = rememberLazyListState()
+    
+    // Animation logic for header
+    val headerAlpha by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 0f
+            else {
+                val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
+                (1f - (scrollOffset / 300f)).coerceIn(0f, 1f)
+            }
+        }
+    }
+    
+    val headerTranslationY by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) -100f
+            else {
+                val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
+                (-scrollOffset * 0.5f).coerceIn(-100f, 0f)
+            }
+        }
+    }
+
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     
@@ -91,52 +121,99 @@ fun LibraryScreen(
                 )
             )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
+        @OptIn(ExperimentalFoundationApi::class)
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // Header
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 24.dp)
-            ) {
-                Text(
-                    text = "by IORI STUDIOS",
-                    color = NeonPurple,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                Text(
-                    text = "Music",
-                    color = androidx.compose.ui.graphics.Color.White,
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    style = androidx.compose.ui.text.TextStyle(
-                        shadow = androidx.compose.ui.graphics.Shadow(
-                            color = NeonPurpleGlow,
-                            blurRadius = 30f
+            // Header Item
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = headerAlpha
+                            translationY = headerTranslationY
+                        }
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 8.dp) // Minimal top padding
+                ) {
+                    Box {
+                        // Intense Glow Layer
+                        Text(
+                            text = "Music",
+                            color = Color.Transparent,
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = NeonPurpleGlow,
+                                    blurRadius = 80f
+                                )
+                            )
                         )
+                        // Secondary Glow Layer
+                        Text(
+                            text = "Music",
+                            color = Color.Transparent,
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = NeonPurpleGlow.copy(alpha = 0.8f),
+                                    blurRadius = 40f
+                                )
+                            )
+                        )
+                        // Primary Text
+                        Text(
+                            text = "Music",
+                            color = Color.White,
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = NeonPurpleGlow.copy(alpha = 0.5f),
+                                    blurRadius = 15f
+                                )
+                            )
+                        )
+                    }
+
+                    Text(
+                        text = "by IORI STUDIOS",
+                        color = NeonPurple.copy(alpha = 0.8f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.padding(top = 0.dp, bottom = 4.dp)
                     )
-                )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${allSongsSize} songs",
+                        color = TextSecondary,
+                        fontSize = 13.sp
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
 
-                Text(
-                    text = "${allSongsSize} songs",
-                    color = TextSecondary,
-                    fontSize = 13.sp
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Search + Sort row
+            // Sticky Search + Sort Row
+            stickyHeader {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    SurfaceGradientStart.copy(alpha = 0.95f),
+                                    SurfaceGradientStart.copy(alpha = 0.8f)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -193,58 +270,51 @@ fun LibraryScreen(
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // Song list or empty state
             if (filteredSongs.isEmpty()) {
-                // Empty state
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxSize()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.MusicOff,
-                            contentDescription = null,
-                            tint = TextMuted,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Text(
-                            text = "No songs found",
-                            color = TextMuted,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "Try a different search term",
-                            color = TextMuted.copy(alpha = 0.6f),
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MusicOff,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Text(
+                                text = "No songs found",
+                                color = TextMuted,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "Try a different search term",
+                                color = TextMuted.copy(alpha = 0.6f),
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filteredSongs, key = { it.id }) { song ->
-                        SongRow(
-                            song = song,
-                            onClick = { onSongClick(song) },
-                            onMenuClick = { selectedSong = song },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
+                items(filteredSongs, key = { it.id }) { song ->
+                    SongRow(
+                        song = song,
+                        onClick = { onSongClick(song) },
+                        onMenuClick = { selectedSong = song },
+                        modifier = Modifier.animateItem().padding(horizontal = 16.dp)
+                    )
                 }
             }
         }
