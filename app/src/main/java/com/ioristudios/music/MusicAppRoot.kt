@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,6 +25,9 @@ import com.ioristudios.music.ui.playlists.PlaylistsScreen
 import com.ioristudios.music.ui.theme.MusicTheme
 import com.ioristudios.music.ui.theme.SurfaceDark
 import com.ioristudios.music.ui.util.AnimDuration
+import com.ioristudios.music.ui.VolumeViewModel
+import com.ioristudios.music.ui.components.VolumeBoostControl
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun MusicAppRoot() {
@@ -120,6 +125,27 @@ fun MusicAppRoot() {
                             onBack = { navController.popBackStack() }
                         )
                     }
+                }
+
+                // Global Volume Bar Overlay
+                val volumeViewModel: VolumeViewModel = viewModel()
+                val isVolumeVisible by volumeViewModel.isVisible.collectAsState()
+                val volumePercent by volumeViewModel.volumePercent.collectAsState()
+
+                AnimatedVisibility(
+                    visible = isVolumeVisible,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
+                        .padding(horizontal = 24.dp)
+                ) {
+                    VolumeBoostControl(
+                        volumePercent = volumePercent,
+                        onVolumeChange = { volumeViewModel.setVolume(it) },
+                        isFloating = true
+                    )
                 }
             }
         }

@@ -9,25 +9,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,124 +24,97 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ioristudios.music.ui.theme.CoreWhiteDim
-import com.ioristudios.music.ui.theme.NeonPurple
-import com.ioristudios.music.ui.theme.NeonPurpleFaint
-import com.ioristudios.music.ui.theme.NeonPurpleSubtle
-import com.ioristudios.music.ui.theme.SurfaceDarkCard
-import com.ioristudios.music.ui.theme.TextSecondary
+import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 
 @Composable
 fun VolumeBoostControl(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    volumePercent: Float = 100f,
+    onVolumeChange: (Float) -> Unit = {},
+    isFloating: Boolean = false
 ) {
     val haptic = rememberHapticFeedback()
-    var isExpanded by remember { mutableStateOf(false) }
-    var volumePercent by remember { mutableFloatStateOf(100f) }
-
-    // Animated icon rotation on expand/collapse
-    val iconRotation by animateFloatAsState(
-        targetValue = if (isExpanded) 180f else 0f,
-        animationSpec = tween(350),
-        label = "volumeIconRotation"
-    )
+    var isExpanded by remember { mutableStateOf(!isFloating) }
+    
+    // Internal state for non-floating mode, otherwise uses passed parameters
+    var internalVolume by remember { mutableFloatStateOf(volumePercent) }
+    val currentVolume = if (isFloating) volumePercent else internalVolume
 
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Volume toggle button
-        IconButton(
-            onClick = {
-                haptic.performClick()
-                isExpanded = !isExpanded
-            },
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (isExpanded) NeonPurpleFaint else SurfaceDarkCard
-                )
-                .border(
-                    width = 1.dp,
-                    color = if (isExpanded) NeonPurpleSubtle else NeonPurpleFaint,
-                    shape = RoundedCornerShape(12.dp)
-                )
-        ) {
-            Icon(
-                imageVector = Icons.Filled.VolumeUp,
-                contentDescription = "Volume Boost",
-                tint = if (isExpanded) NeonPurple else TextSecondary,
+        if (!isFloating) {
+            // Volume toggle button (only in non-floating/inline mode)
+            IconButton(
+                onClick = {
+                    haptic.performClick()
+                    isExpanded = !isExpanded
+                },
                 modifier = Modifier
-                    .size(22.dp)
-                    .graphicsLayer { rotationZ = iconRotation }
-            )
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isExpanded) NeonPurpleFaint else SurfaceDarkCard)
+                    .border(1.dp, if (isExpanded) NeonPurpleSubtle else NeonPurpleFaint, RoundedCornerShape(12.dp))
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.VolumeUp,
+                    contentDescription = "Volume Boost",
+                    tint = if (isExpanded) NeonPurple else TextSecondary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
 
-        // Expandable volume control
+        // Expandable volume control or Floating Bar
         AnimatedVisibility(
-            visible = isExpanded,
+            visible = isExpanded || isFloating,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = if (isFloating) 0.dp else 24.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(SurfaceDarkCard)
-                    .border(1.dp, NeonPurpleFaint, RoundedCornerShape(16.dp))
-                    .padding(16.dp),
+                    .background(SurfaceDarkCard.copy(alpha = if (isFloating) 0.95f else 1f))
+                    .border(1.dp, NeonPurpleSubtle.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.VolumeUp, null, tint = NeonPurple, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = "Volume Boost",
+                            color = CoreWhiteDim,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
                     Text(
-                        text = "Volume Boost",
-                        color = CoreWhiteDim,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "${volumePercent.toInt()}%",
+                        text = "${currentVolume.toInt()}%",
                         color = NeonPurple,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
 
                 NeonSlider(
-                    value = volumePercent,
-                    onValueChange = { volumePercent = it },
+                    value = currentVolume,
+                    onValueChange = { 
+                        if (isFloating) onVolumeChange(it) else internalVolume = it
+                    },
                     valueRange = 0f..200f
                 )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "0%",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = "100%",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = "200%",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-                }
             }
         }
     }

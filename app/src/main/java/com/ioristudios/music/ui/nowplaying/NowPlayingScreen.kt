@@ -36,7 +36,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,16 +72,6 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
         "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
     }
 
-    // Vinyl rotation — freezes when paused, resumes when playing
-    var rotationAngle by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isActive) {
-                kotlinx.coroutines.delay(16L) // ~60fps
-                rotationAngle = (rotationAngle + 0.5f) % 360f
-            }
-        }
-    }
 
     // Staggered entrance animations
     val headerAlpha = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -99,66 +91,91 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
     ) {
         Column(
             modifier = Modifier
-                .fillMaxHeight()
+                .fillMaxSize()
                 .widthIn(max = 600.dp)
-                .verticalScroll(rememberScrollState())
-                .statusBarsPadding()
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(8.dp))
-
-            // Top bar: NOW PLAYING label + options button
-            Row(
+            // Header: "Now Playing" matching Library style
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer { alpha = headerAlpha.value },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                contentAlignment = Alignment.Center
             ) {
-                // Spacer to balance the row (options button on right)
-                Spacer(Modifier.size(48.dp))
-
+                // Intense Glow Layer
                 Text(
-                    "NOW PLAYING",
-                    color = NeonPurple,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.sp,
-                    textAlign = TextAlign.Center
+                    text = "Now Playing",
+                    color = Color.Transparent,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = TextStyle(
+                        shadow = Shadow(
+                            color = NeonPurpleGlow,
+                            blurRadius = 80f
+                        )
+                    )
+                )
+                // Secondary Glow Layer
+                Text(
+                    text = "Now Playing",
+                    color = Color.Transparent,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = TextStyle(
+                        shadow = Shadow(
+                            color = NeonPurpleGlow.copy(alpha = 0.8f),
+                            blurRadius = 40f
+                        )
+                    )
+                )
+                // Primary Text
+                Text(
+                    text = "Now Playing",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = TextStyle(
+                        shadow = Shadow(
+                            color = NeonPurpleGlow.copy(alpha = 0.5f),
+                            blurRadius = 15f
+                        )
+                    )
                 )
 
+                // Options button aligned to right
                 IconButton(
                     onClick = {
                         haptic.performClick()
                         showOptions = true
                     },
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier
+                        .size(40.dp)
+                        .align(Alignment.CenterEnd)
                 ) {
-                    Icon(Icons.Filled.MoreVert, "Options", tint = CoreWhiteDim, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Filled.MoreVert, "Options", tint = CoreWhiteDim, modifier = Modifier.size(20.dp))
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // Visualizer container with vinyl rotation
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(160.dp)
                     .graphicsLayer {
                         alpha = visualizerAlpha.value
-                        translationY = (1f - visualizerAlpha.value) * 40f
+                        translationY = (1f - visualizerAlpha.value) * 20f
                     }
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Brush.radialGradient(listOf(NeonPurpleFaint, Color.Transparent)))
-                    .border(1.dp, NeonPurpleFaint, RoundedCornerShape(20.dp))
-                    .padding(16.dp)
-                    .graphicsLayer { rotationZ = rotationAngle }
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Brush.radialGradient(listOf(NeonPurpleFaint.copy(alpha = 0.2f), Color.Transparent)))
+                    .border(1.dp, NeonPurpleFaint.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                    .padding(12.dp)
             ) {
-                VisualizerView(isPlaying = isPlaying, barCount = 32, modifier = Modifier.fillMaxWidth().height(200.dp))
+                VisualizerView(isPlaying = isPlaying, barCount = 40, modifier = Modifier.fillMaxWidth().fillMaxHeight())
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(20.dp))
 
             // Song title + favorite — with marquee for long titles
             Row(
@@ -173,8 +190,8 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
             ) {
                 Text(
                     currentSong.title,
-                    color = CoreWhiteDim,
-                    fontSize = 24.sp,
+                    color = CoreWhite,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
@@ -224,16 +241,14 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
             Text(
                 currentSong.artist,
                 color = TextSecondary,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 textAlign = TextAlign.Start,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        alpha = controlsAlpha.value
-                    }
+                    .graphicsLayer { alpha = controlsAlpha.value }
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(20.dp))
 
             // Seek bar with haptic on 10% boundaries
             Column(
@@ -272,18 +287,16 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 // Previous
                 val prevInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = {
-                        haptic.performClick()
-                    },
+                    onClick = { haptic.performClick() },
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(48.dp)
                         .pressAnimation(prevInteraction)
                         .clip(CircleShape)
                         .background(SurfaceDarkCard)
-                        .border(1.dp, NeonPurpleFaint, CircleShape),
+                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.5f), CircleShape),
                     interactionSource = prevInteraction
                 ) {
-                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = CoreWhiteDim, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = CoreWhiteDim, modifier = Modifier.size(24.dp))
                 }
 
                 // Play/Pause with animated crossfade
@@ -294,7 +307,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                         isPlaying = !isPlaying
                     },
                     modifier = Modifier
-                        .size(72.dp)
+                        .size(64.dp)
                         .pressAnimation(playInteraction)
                         .shadow(12.dp, CircleShape, ambientColor = NeonPurple.copy(alpha = 0.4f), spotColor = NeonPurpleGlow.copy(alpha = 0.5f))
                         .clip(CircleShape)
@@ -313,7 +326,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                             if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             if (playing) "Pause" else "Play",
                             tint = CoreWhite,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         )
                     }
                 }
@@ -321,18 +334,16 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 // Next
                 val nextInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = {
-                        haptic.performClick()
-                    },
+                    onClick = { haptic.performClick() },
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(48.dp)
                         .pressAnimation(nextInteraction)
                         .clip(CircleShape)
                         .background(SurfaceDarkCard)
-                        .border(1.dp, NeonPurpleFaint, CircleShape),
+                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.5f), CircleShape),
                     interactionSource = nextInteraction
                 ) {
-                    Icon(Icons.Filled.SkipNext, "Next", tint = CoreWhiteDim, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.SkipNext, "Next", tint = CoreWhiteDim, modifier = Modifier.size(24.dp))
                 }
             }
 
@@ -348,9 +359,9 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Shuffle
-                val shuffleColor by animateColorAsState(if (playbackMode == PlaybackMode.SHUFFLE) NeonPurple else TextMuted, tween(200), label = "sc")
+                val shuffleColor by animateColorAsState(if (playbackMode == PlaybackMode.SHUFFLE) NeonPurple else CoreWhiteDim, tween(200), label = "sc")
                 val shuffleBgAlpha by animateFloatAsState(
-                    if (playbackMode == PlaybackMode.SHUFFLE) 1f else 0f,
+                    if (playbackMode == PlaybackMode.SHUFFLE) 1f else 0.1f,
                     tween(200), label = "sbg"
                 )
                 IconButton(
@@ -359,40 +370,42 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                         playbackMode = if (playbackMode == PlaybackMode.SHUFFLE) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE
                     },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(NeonPurpleFaint.copy(alpha = shuffleBgAlpha))
+                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                 ) { Icon(Icons.Filled.Shuffle, "Shuffle", tint = shuffleColor, modifier = Modifier.size(24.dp)) }
 
                 // Normal
                 val normalBgAlpha by animateFloatAsState(
-                    if (playbackMode == PlaybackMode.NORMAL) 1f else 0f,
+                    if (playbackMode == PlaybackMode.NORMAL) 1f else 0.1f,
                     tween(200), label = "nbg"
                 )
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(NeonPurpleFaint.copy(alpha = normalBgAlpha))
+                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
                         .clickable(role = androidx.compose.ui.semantics.Role.Button) {
                             haptic.performHeavyClick()
                             playbackMode = PlaybackMode.NORMAL
                         }
-                        .defaultMinSize(minHeight = 48.dp)
+                        .defaultMinSize(minHeight = 44.dp)
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         "Normal",
-                        color = if (playbackMode == PlaybackMode.NORMAL) NeonPurple else TextMuted,
-                        fontSize = 14.sp,
-                        fontWeight = if (playbackMode == PlaybackMode.NORMAL) FontWeight.SemiBold else FontWeight.Normal
+                        color = if (playbackMode == PlaybackMode.NORMAL) NeonPurple else CoreWhiteDim,
+                        fontSize = 13.sp,
+                        fontWeight = if (playbackMode == PlaybackMode.NORMAL) FontWeight.Bold else FontWeight.Medium
                     )
                 }
 
                 // Repeat
-                val repeatColor by animateColorAsState(if (playbackMode == PlaybackMode.REPEAT) NeonPurple else TextMuted, tween(200), label = "rc")
+                val repeatColor by animateColorAsState(if (playbackMode == PlaybackMode.REPEAT) NeonPurple else CoreWhiteDim, tween(200), label = "rc")
                 val repeatBgAlpha by animateFloatAsState(
-                    if (playbackMode == PlaybackMode.REPEAT) 1f else 0f,
+                    if (playbackMode == PlaybackMode.REPEAT) 1f else 0.1f,
                     tween(200), label = "rbg"
                 )
                 IconButton(
@@ -401,15 +414,17 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                         playbackMode = if (playbackMode == PlaybackMode.REPEAT) PlaybackMode.NORMAL else PlaybackMode.REPEAT
                     },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(NeonPurpleFaint.copy(alpha = repeatBgAlpha))
+                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                 ) { Icon(if (playbackMode == PlaybackMode.REPEAT) Icons.Filled.RepeatOne else Icons.Filled.Repeat, "Repeat", tint = repeatColor, modifier = Modifier.size(24.dp)) }
             }
 
-            Spacer(Modifier.height(24.dp))
-            VolumeBoostControl()
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(20.dp))
+            // Inline volume control removed in favor of global floating bar
+            // But we can keep a small indicator or button if needed. 
+            // For now, let's keep it simple and clean.
         }
     }
 

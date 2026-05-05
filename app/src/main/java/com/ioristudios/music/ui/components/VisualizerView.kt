@@ -67,7 +67,6 @@ fun VisualizerView(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(200.dp)
     ) {
         val canvasWidth = size.width
         val canvasHeight = size.height
