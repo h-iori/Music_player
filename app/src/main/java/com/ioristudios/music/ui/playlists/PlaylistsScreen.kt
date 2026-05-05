@@ -40,38 +40,43 @@ fun PlaylistsScreen(
             Brush.verticalGradient(listOf(SurfaceGradientStart, SurfaceGradientEnd))
         )
     ) {
-        Column(Modifier.fillMaxSize()) {
-            // Header
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp)) {
-                Text("Playlists", color = CoreWhiteDim, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text("${playlists.size} playlists", color = TextSecondary, fontSize = 13.sp)
-                Spacer(Modifier.height(16.dp))
-            }
-
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(playlists, key = { it.id }) { playlist ->
-                    PlaylistCard(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+        Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { showCreateDialog = true },
+                    modifier = Modifier
+                        .shadow(12.dp, CircleShape, ambientColor = NeonPurple.copy(alpha = 0.3f), spotColor = NeonPurpleGlow.copy(alpha = 0.4f)),
+                    containerColor = NeonPurple,
+                    contentColor = CoreWhite,
+                    shape = CircleShape
+                ) {
+                    Icon(Icons.Filled.Add, "Create Playlist")
                 }
-                item { Spacer(Modifier.height(80.dp)) }
+            }
+        ) { paddingValues ->
+            Column(Modifier.fillMaxSize().padding(paddingValues)) {
+                // Header
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp)) {
+                    Text("Playlists", color = CoreWhiteDim, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text("${playlists.size} playlists", color = TextSecondary, fontSize = 13.sp)
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(playlists, key = { it.id }) { playlist ->
+                        PlaylistCard(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                    }
+                }
             }
         }
 
-        // FAB
-        FloatingActionButton(
-            onClick = { showCreateDialog = true },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 96.dp)
-                .shadow(12.dp, CircleShape, ambientColor = NeonPurple.copy(alpha = 0.3f), spotColor = NeonPurpleGlow.copy(alpha = 0.4f)),
-            containerColor = NeonPurple,
-            contentColor = CoreWhite,
-            shape = CircleShape
-        ) {
-            Icon(Icons.Filled.Add, "Create Playlist")
-        }
+
 
         if (showCreateDialog) {
             CreatePlaylistDialog(

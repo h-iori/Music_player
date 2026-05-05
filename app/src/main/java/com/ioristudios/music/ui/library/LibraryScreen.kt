@@ -27,10 +27,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,28 +62,17 @@ enum class SortMode(val label: String) {
 @Composable
 fun LibraryScreen(
     onSongClick: (Song) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: LibraryViewModel = viewModel()
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var sortMode by remember { mutableStateOf(SortMode.AZ) }
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val sortMode by viewModel.sortMode.collectAsState()
+    val filteredSongs by viewModel.filteredSongs.collectAsState()
+    
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
-
-    val allSongs = remember { SampleData.songs }
-    val filteredSongs = remember(searchQuery, sortMode, allSongs) {
-        val filtered = if (searchQuery.isBlank()) {
-            allSongs
-        } else {
-            allSongs.filter {
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                        it.artist.contains(searchQuery, ignoreCase = true)
-            }
-        }
-        when (sortMode) {
-            SortMode.AZ -> filtered.sortedBy { it.title.lowercase() }
-            SortMode.BY_TIME -> filtered.sortedBy { it.duration }
-        }
-    }
+    
+    val allSongsSize = SampleData.songs.size
 
     Box(
         modifier = modifier
@@ -112,7 +103,7 @@ fun LibraryScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "${allSongs.size} songs",
+                    text = "${allSongsSize} songs",
                     color = TextSecondary,
                     fontSize = 13.sp
                 )
@@ -127,7 +118,7 @@ fun LibraryScreen(
                 ) {
                     NeonSearchBar(
                         query = searchQuery,
-                        onQueryChange = { searchQuery = it },
+                        onQueryChange = { viewModel.onSearchQueryChange(it) },
                         modifier = Modifier.weight(1f)
                     )
 
@@ -166,7 +157,7 @@ fun LibraryScreen(
                                         )
                                     },
                                     onClick = {
-                                        sortMode = mode
+                                        viewModel.onSortModeChange(mode)
                                         showSortMenu = false
                                     }
                                 )
@@ -190,11 +181,6 @@ fun LibraryScreen(
                         onClick = { onSongClick(song) },
                         onMenuClick = { selectedSong = song }
                     )
-                }
-
-                // Bottom spacing for nav bar
-                item {
-                    Spacer(modifier = Modifier.height(80.dp))
                 }
             }
         }

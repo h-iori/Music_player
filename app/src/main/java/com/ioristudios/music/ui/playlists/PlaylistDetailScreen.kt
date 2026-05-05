@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.ioristudios.music.ui.playlists
 
 import androidx.compose.foundation.background
@@ -24,6 +25,9 @@ import com.ioristudios.music.data.model.Playlist
 import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.ui.theme.*
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +37,12 @@ fun PlaylistDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val playlist = remember { SampleData.playlists.find { it.id == playlistId } ?: SampleData.playlists.first() }
+    val songs = remember(playlist) { playlist.songs.toMutableStateList() }
+
+    val listState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(listState, onMove = { from, to ->
+        songs.add(to.index, songs.removeAt(from.index))
+    })
 
     Box(
         modifier = modifier.fillMaxSize().background(
@@ -53,7 +63,7 @@ fun PlaylistDetailScreen(
                         Icon(Icons.Filled.PlaylistAdd, "Add Songs", tint = NeonPurple)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceGradientStart)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             )
 
             // Song count info
@@ -67,23 +77,30 @@ fun PlaylistDetailScreen(
 
             // Song list with drag handles
             LazyColumn(
-                Modifier.fillMaxSize(),
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                itemsIndexed(playlist.songs, key = { _, song -> song.id }) { index, song ->
-                    PlaylistSongRow(song = song, index = index + 1)
+                itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
+                    ReorderableItem(reorderState, key = song.id) { isDragging ->
+                        val modifierWithDrag = Modifier.longPressDraggableHandle()
+                        PlaylistSongRow(
+                            song = song,
+                            index = index + 1,
+                            modifier = modifierWithDrag
+                        )
+                    }
                 }
-                item { Spacer(Modifier.height(80.dp)) }
             }
         }
     }
 }
 
 @Composable
-private fun PlaylistSongRow(song: Song, index: Int) {
+private fun PlaylistSongRow(song: Song, index: Int, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(horizontal = 8.dp, vertical = 10.dp),
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceDarkCard.copy(alpha = 0.3f)).padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Drag handle
@@ -107,8 +124,8 @@ private fun PlaylistSongRow(song: Song, index: Int) {
         Text(song.formattedDuration(), color = TextMuted, fontSize = 12.sp)
 
         // Remove button
-        IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Filled.RemoveCircleOutline, "Remove", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+        IconButton(onClick = { }, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Filled.RemoveCircleOutline, "Remove", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
         }
     }
 }

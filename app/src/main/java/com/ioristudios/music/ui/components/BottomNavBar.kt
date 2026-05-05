@@ -126,21 +126,11 @@ fun BottomNavBar(
                             tint = iconColor,
                             modifier = Modifier.size(26.dp)
                         )
-                        if (isSelected) {
-                            Icon(
-                                imageVector = item.selectedIcon,
-                                contentDescription = null,
-                                tint = NeonPurpleGlow.copy(alpha = 0.3f),
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .align(Alignment.Center)
-                            )
-                        }
                     }
                     Text(
                         text = item.label,
                         color = labelColor,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }

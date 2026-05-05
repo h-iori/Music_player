@@ -50,14 +50,15 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier.fillMaxSize().background(
             Brush.verticalGradient(listOf(SurfaceGradientStart, SurfaceGradientEnd, NeonPurpleDark.copy(alpha = 0.05f)))
-        )
+        ),
+        contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxHeight().widthIn(max = 600.dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(24.dp))
-            Text("NOW PLAYING", color = NeonPurple, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Text("NOW PLAYING", color = NeonPurple, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(32.dp))
 
             // Visualizer container
@@ -111,24 +112,24 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 val shuffleColor by animateColorAsState(if (playbackMode == PlaybackMode.SHUFFLE) NeonPurple else TextMuted, tween(200), label = "sc")
                 IconButton(
                     onClick = { playbackMode = if (playbackMode == PlaybackMode.SHUFFLE) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE },
-                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(if (playbackMode == PlaybackMode.SHUFFLE) NeonPurpleFaint else Color.Transparent)
-                ) { Icon(Icons.Filled.Shuffle, "Shuffle", tint = shuffleColor, modifier = Modifier.size(22.dp)) }
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(if (playbackMode == PlaybackMode.SHUFFLE) NeonPurpleFaint else Color.Transparent)
+                ) { Icon(Icons.Filled.Shuffle, "Shuffle", tint = shuffleColor, modifier = Modifier.size(24.dp)) }
 
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (playbackMode == PlaybackMode.NORMAL) NeonPurpleFaint else Color.Transparent)
-                        .clickable { playbackMode = PlaybackMode.NORMAL }.padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center
-                ) { Text("Normal", color = if (playbackMode == PlaybackMode.NORMAL) NeonPurple else TextMuted, fontSize = 13.sp, fontWeight = if (playbackMode == PlaybackMode.NORMAL) FontWeight.SemiBold else FontWeight.Normal) }
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button) { playbackMode = PlaybackMode.NORMAL }.defaultMinSize(minHeight = 48.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.Center
+                ) { Text("Normal", color = if (playbackMode == PlaybackMode.NORMAL) NeonPurple else TextMuted, fontSize = 14.sp, fontWeight = if (playbackMode == PlaybackMode.NORMAL) FontWeight.SemiBold else FontWeight.Normal) }
 
                 val repeatColor by animateColorAsState(if (playbackMode == PlaybackMode.REPEAT) NeonPurple else TextMuted, tween(200), label = "rc")
                 IconButton(
                     onClick = { playbackMode = if (playbackMode == PlaybackMode.REPEAT) PlaybackMode.NORMAL else PlaybackMode.REPEAT },
-                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(if (playbackMode == PlaybackMode.REPEAT) NeonPurpleFaint else Color.Transparent)
-                ) { Icon(if (playbackMode == PlaybackMode.REPEAT) Icons.Filled.RepeatOne else Icons.Filled.Repeat, "Repeat", tint = repeatColor, modifier = Modifier.size(22.dp)) }
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(if (playbackMode == PlaybackMode.REPEAT) NeonPurpleFaint else Color.Transparent)
+                ) { Icon(if (playbackMode == PlaybackMode.REPEAT) Icons.Filled.RepeatOne else Icons.Filled.Repeat, "Repeat", tint = repeatColor, modifier = Modifier.size(24.dp)) }
             }
 
             Spacer(Modifier.height(24.dp))
             VolumeBoostControl()
-            Spacer(Modifier.height(100.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
