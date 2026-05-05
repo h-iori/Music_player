@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,7 +25,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,6 +55,30 @@ fun PlaylistsScreen(
     // Back handler to exit selection mode
     BackHandler(enabled = isSelectionMode) {
         viewModel.exitSelectionMode()
+    }
+    val listState = rememberLazyListState()
+    
+    // Animation logic for header (mirrors LibraryScreen)
+    val headerAlpha by remember {
+        derivedStateOf {
+            if (isSelectionMode) 0f
+            else if (listState.firstVisibleItemIndex > 0) 0f
+            else {
+                val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
+                (1f - (scrollOffset / 200f)).coerceIn(0f, 1f)
+            }
+        }
+    }
+    
+    val headerTranslationY by remember {
+        derivedStateOf {
+            if (isSelectionMode) -60f
+            else if (listState.firstVisibleItemIndex > 0) -60f
+            else {
+                val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
+                (-scrollOffset * 0.4f).coerceIn(-60f, 0f)
+            }
+        }
     }
 
     Box(
@@ -85,24 +112,37 @@ fun PlaylistsScreen(
                     .padding(paddingValues)
                     .statusBarsPadding()
             ) {
-                // Header
+                // Header [Playlist]
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
-                        .padding(top = 16.dp)
+                        .padding(top = 4.dp) // Minimal top padding
                         .graphicsLayer {
-                            alpha = if (isSelectionMode) 0f else 1f
+                            alpha = headerAlpha
+                            translationY = headerTranslationY
                         }
                 ) {
-                    Text("Playlists", color = CoreWhiteDim, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Playlists", 
+                        color = Color.White, 
+                        fontSize = 32.sp, 
+                        fontWeight = FontWeight.ExtraBold,
+                        style = TextStyle(
+                            shadow = Shadow(
+                                color = NeonPurpleGlow.copy(alpha = 0.5f),
+                                blurRadius = 15f
+                            )
+                        )
+                    )
+                    Spacer(Modifier.height(2.dp))
                     Text("${playlists.size} playlists", color = TextSecondary, fontSize = 13.sp)
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
 
                 LazyColumn(
-                    Modifier.fillMaxSize(),
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {

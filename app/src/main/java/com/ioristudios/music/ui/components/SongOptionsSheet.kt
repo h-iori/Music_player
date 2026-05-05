@@ -62,7 +62,6 @@ fun SongOptionsSheet(
     isMultiSelect: Boolean = false,
     onDismiss: () -> Unit,
     onSetRingtone: () -> Unit = {},
-    onTrimSong: () -> Unit = {},
     onEditName: () -> Unit = {},
     onShare: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -71,6 +70,7 @@ fun SongOptionsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
+    var showTrimDialog by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -140,26 +140,20 @@ fun SongOptionsSheet(
             AnimatedOptionItem(
                 icon = Icons.Filled.RingVolume,
                 label = "Set as Ringtone",
-                onClick = onSetRingtone,
+                onClick = { showTrimDialog = true },
                 index = 0
-            )
-            AnimatedOptionItem(
-                icon = Icons.Filled.ContentCut,
-                label = "Trim Song",
-                onClick = onTrimSong,
-                index = 1
             )
             AnimatedOptionItem(
                 icon = Icons.Filled.Edit,
                 label = "Edit Song Name",
                 onClick = onEditName,
-                index = 2
+                index = 1
             )
             AnimatedOptionItem(
                 icon = Icons.Filled.Share,
                 label = "Share",
                 onClick = onShare,
-                index = 3
+                index = 2
             )
 
             HorizontalDivider(
@@ -173,7 +167,7 @@ fun SongOptionsSheet(
                 label = "Delete",
                 onClick = { showDeleteConfirm = true },
                 tint = ErrorRed,
-                index = 4
+                index = 3
             )
 
             if (isMultiSelect) {
@@ -182,10 +176,22 @@ fun SongOptionsSheet(
                     label = "Bulk Delete Selected",
                     onClick = { showBulkDeleteConfirm = true },
                     tint = ErrorRed,
-                    index = 5
+                    index = 4
                 )
             }
         }
+    }
+
+    // Trimming tool for Ringtone
+    if (showTrimDialog) {
+        TrimDialog(
+            song = song,
+            onDismiss = { showTrimDialog = false },
+            onSave = { start, end ->
+                showTrimDialog = false
+                onSetRingtone() // Proceed with setting ringtone after trim
+            }
+        )
     }
 
     // Confirmation dialogs

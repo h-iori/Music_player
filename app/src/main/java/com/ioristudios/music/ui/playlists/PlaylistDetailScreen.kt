@@ -47,6 +47,7 @@ fun PlaylistDetailScreen(
 
     var showRemoveConfirm by remember { mutableStateOf(false) }
     var songToRemove by remember { mutableStateOf<Song?>(null) }
+    var showAddSongsDialog by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(listState, onMove = { from, to ->
@@ -75,6 +76,7 @@ fun PlaylistDetailScreen(
                 actions = {
                     IconButton(onClick = {
                         haptic.performClick()
+                        showAddSongsDialog = true
                     }) {
                         Icon(Icons.Filled.PlaylistAdd, "Add Songs", tint = NeonPurple)
                     }
@@ -87,7 +89,7 @@ fun PlaylistDetailScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("${playlist.songs.size} songs", color = TextSecondary, fontSize = 13.sp)
+                Text("${songs.size} songs", color = TextSecondary, fontSize = 13.sp)
                 Text("Created ${playlist.createdAt}", color = TextMuted, fontSize = 11.sp)
             }
 
@@ -151,6 +153,19 @@ fun PlaylistDetailScreen(
                     }
                 }
             }
+        }
+
+        if (showAddSongsDialog) {
+            com.ioristudios.music.ui.components.AddSongsToPlaylistDialog(
+                onDismiss = { showAddSongsDialog = false },
+                onAddSongs = { newSongs ->
+                    // Add only those that aren't already in the playlist
+                    val existingIds = songs.map { it.id }.toSet()
+                    val songsToAdd = newSongs.filter { it.id !in existingIds }
+                    songs.addAll(songsToAdd)
+                    showAddSongsDialog = false
+                }
+            )
         }
     }
 

@@ -149,14 +149,15 @@ fun CreatePlaylistDialog(
                         containerColor = NeonPurple,
                         contentColor = Color.White,
                         disabledContainerColor = NeonPurpleFaint,
-                        disabledContentColor = TextMuted
+                        disabledContentColor = TextSecondary.copy(alpha = 0.5f)
                     ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.padding(start = 8.dp)
                 ) {
                     Text(
                         text = "Create",
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp
                     )
                 }
             }
