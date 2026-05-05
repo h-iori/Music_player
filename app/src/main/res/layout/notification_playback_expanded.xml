@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/surface_dark"
+    android:padding="16dp">
+
+    <!-- Song name - larger for lock screen -->
+    <TextView
+        android:id="@+id/lockscreen_song_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Electric Pulse"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:paddingBottom="4dp" />
+
+    <!-- Artist name -->
+    <TextView
+        android:id="@+id/lockscreen_artist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Nova Ray"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:paddingBottom="12dp" />
+
+    <!-- Seeker / progress bar -->
+    <SeekBar
+        android:id="@+id/lockscreen_seekbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="38"
+        android:progressTint="@color/neon_purple"
+        android:progressBackgroundTint="@color/text_secondary"
+        android:thumbTint="@color/core_white"
+        android:paddingBottom="8dp" />
+
+    <!-- Time indicators -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="12dp">
+
+        <TextView
+            android:id="@+id/lockscreen_time_current"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="1:58"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/lockscreen_time_total"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="5:12"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+
+    <!-- Transport controls - larger for lock screen -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <ImageButton
+            android:id="@+id/lockscreen_btn_prev"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:src="@android:drawable/ic_media_previous"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Previous"
+            android:tint="@color/text_primary"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/lockscreen_btn_play"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@android:drawable/ic_media_pause"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Play or Pause"
+            android:tint="@color/neon_purple"
+            android:scaleType="centerInside"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp" />
+
+        <ImageButton
+            android:id="@+id/lockscreen_btn_next"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:src="@android:drawable/ic_media_next"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Next"
+            android:tint="@color/text_primary"
+            android:scaleType="centerInside" />
+
+    </LinearLayout>
+
+</LinearLayout>

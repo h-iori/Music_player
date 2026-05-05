@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="neon_purple">#BF00FF</color>
+    <color name="neon_purple_glow">#9B30FF</color>
+    <color name="neon_purple_dark">#8A00CC</color>
+    <color name="core_white">#FFFFFF</color>
+    <color name="surface_dark">#0A0A0F</color>
+    <color name="surface_dark_elevated">#12121A</color>
+    <color name="text_primary">#EEEEFF</color>
+    <color name="text_secondary">#7A7A8E</color>
+    <color name="error_red">#FF3366</color>
+</resources>

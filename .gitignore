@@ -1,0 +1,6 @@
+gradlew
+gradlew.bat
+gradle.properties
+/gradle
+/.gradle
+/app/build
