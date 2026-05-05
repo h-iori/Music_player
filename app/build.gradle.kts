@@ -42,7 +42,7 @@ android {
 
 dependencies {
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01") // Recommended latest stable
     implementation(composeBom)
 
     // Core

@@ -31,6 +31,10 @@ val TextMuted = Color(0xFF4A4A5E)
 val ErrorRed = Color(0xFFFF3366)
 val SuccessGreen = Color(0xFF00FF88)
 
+// Mid-alpha variants for animated states
+val NeonPurpleMedium = Color(0x4DBF00FF)
+val DragElevationShadow = Color(0x66BF00FF)
+
 // Transparent overlays
 val DarkOverlay = Color(0x80000000)
 val PurpleOverlay = Color(0x1ABF00FF)

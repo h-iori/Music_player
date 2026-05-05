@@ -1,6 +1,7 @@
 package com.ioristudios.music
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +22,7 @@ import com.ioristudios.music.ui.playlists.PlaylistDetailScreen
 import com.ioristudios.music.ui.playlists.PlaylistsScreen
 import com.ioristudios.music.ui.theme.MusicTheme
 import com.ioristudios.music.ui.theme.SurfaceDark
+import com.ioristudios.music.ui.util.AnimDuration
 
 @Composable
 fun MusicAppRoot() {
@@ -54,13 +56,35 @@ fun MusicAppRoot() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = innerPadding.calculateBottomPadding())
+                    .padding(innerPadding)
             ) {
                 NavHost(
                     navController = navController,
                     startDestination = "library",
-                    enterTransition = { fadeIn(tween(200)) },
-                    exitTransition = { fadeOut(tween(200)) }
+                    enterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { it / 4 },
+                            animationSpec = tween(AnimDuration.MEDIUM, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(AnimDuration.MEDIUM))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { -it / 4 },
+                            animationSpec = tween(AnimDuration.MEDIUM, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(AnimDuration.FAST))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { -it / 4 },
+                            animationSpec = tween(AnimDuration.MEDIUM, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(AnimDuration.MEDIUM))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { it / 4 },
+                            animationSpec = tween(AnimDuration.MEDIUM, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(AnimDuration.FAST))
+                    }
                 ) {
                     composable("library") {
                         LibraryScreen(

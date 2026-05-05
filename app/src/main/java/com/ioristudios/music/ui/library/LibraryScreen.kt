@@ -1,6 +1,7 @@
 package com.ioristudios.music.ui.library
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -39,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ioristudios.music.data.model.SampleData
@@ -54,7 +57,9 @@ import com.ioristudios.music.ui.theme.NeonPurpleSubtle
 import com.ioristudios.music.ui.theme.SurfaceDarkCard
 import com.ioristudios.music.ui.theme.SurfaceGradientEnd
 import com.ioristudios.music.ui.theme.SurfaceGradientStart
+import com.ioristudios.music.ui.theme.TextMuted
 import com.ioristudios.music.ui.theme.TextSecondary
+import com.ioristudios.music.ui.util.rememberHapticFeedback
 
 enum class SortMode(val label: String) {
     AZ("A–Z"),
@@ -67,6 +72,7 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel()
 ) {
+    val haptic = rememberHapticFeedback()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val sortMode by viewModel.sortMode.collectAsState()
     val filteredSongs by viewModel.filteredSongs.collectAsState()
@@ -142,7 +148,10 @@ fun LibraryScreen(
 
                     Box {
                         IconButton(
-                            onClick = { showSortMenu = true },
+                            onClick = {
+                                haptic.performClick()
+                                showSortMenu = true
+                            },
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(RoundedCornerShape(16.dp))
@@ -175,6 +184,7 @@ fun LibraryScreen(
                                         )
                                     },
                                     onClick = {
+                                        haptic.performClick()
                                         viewModel.onSortModeChange(mode)
                                         showSortMenu = false
                                     }
@@ -187,18 +197,54 @@ fun LibraryScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Song list
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filteredSongs, key = { it.id }) { song ->
-                    SongRow(
-                        song = song,
-                        onClick = { onSongClick(song) },
-                        onMenuClick = { selectedSong = song }
-                    )
+            // Song list or empty state
+            if (filteredSongs.isEmpty()) {
+                // Empty state
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MusicOff,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = "No songs found",
+                            color = TextMuted,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "Try a different search term",
+                            color = TextMuted.copy(alpha = 0.6f),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredSongs, key = { it.id }) { song ->
+                        SongRow(
+                            song = song,
+                            onClick = { onSongClick(song) },
+                            onMenuClick = { selectedSong = song },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
                 }
             }
         }

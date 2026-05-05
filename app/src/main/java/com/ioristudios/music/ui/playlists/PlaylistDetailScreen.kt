@@ -1,12 +1,15 @@
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.ioristudios.music.ui.playlists
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,18 +19,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ioristudios.music.data.model.Playlist
 import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.theme.*
+import com.ioristudios.music.ui.util.rememberHapticFeedback
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,12 +41,18 @@ fun PlaylistDetailScreen(
     onBack: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val haptic = rememberHapticFeedback()
     val playlist = remember { SampleData.playlists.find { it.id == playlistId } ?: SampleData.playlists.first() }
     val songs = remember(playlist) { playlist.songs.toMutableStateList() }
+
+    var showRemoveConfirm by remember { mutableStateOf(false) }
+    var songToRemove by remember { mutableStateOf<Song?>(null) }
 
     val listState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(listState, onMove = { from, to ->
         songs.add(to.index, songs.removeAt(from.index))
+        // Haptic tick on every item boundary crossed during drag
+        haptic.performDragTick()
     })
 
     Box(
@@ -49,17 +60,22 @@ fun PlaylistDetailScreen(
             Brush.verticalGradient(listOf(SurfaceGradientStart, SurfaceGradientEnd))
         )
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
             // Top bar
             TopAppBar(
                 title = { Text(playlist.name, color = CoreWhiteDim, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        haptic.performClick()
+                        onBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CoreWhiteDim)
                     }
                 },
                 actions = {
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = {
+                        haptic.performClick()
+                    }) {
                         Icon(Icons.Filled.PlaylistAdd, "Add Songs", tint = NeonPurple)
                     }
                 },
@@ -75,7 +91,7 @@ fun PlaylistDetailScreen(
                 Text("Created ${playlist.createdAt}", color = TextMuted, fontSize = 11.sp)
             }
 
-            // Song list with drag handles
+            // Song list with drag handles and haptic feedback
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -84,24 +100,98 @@ fun PlaylistDetailScreen(
             ) {
                 itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
                     ReorderableItem(reorderState, key = song.id) { isDragging ->
-                        val modifierWithDrag = Modifier.longPressDraggableHandle()
+                        // Scale up + elevation shadow when dragging
+                        val dragScale by animateFloatAsState(
+                            targetValue = if (isDragging) 1.03f else 1f,
+                            animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
+                            label = "dragScale"
+                        )
+                        val dragElevation by androidx.compose.animation.core.animateDpAsState(
+                            targetValue = if (isDragging) 8.dp else 0.dp,
+                            animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
+                            label = "dragElevation"
+                        )
+
+                        val modifierWithDrag = Modifier.longPressDraggableHandle(
+                            onDragStarted = {
+                                haptic.performDragStart()
+                            },
+                            onDragStopped = {
+                                haptic.performDragEnd()
+                            }
+                        )
+
                         PlaylistSongRow(
                             song = song,
                             index = index + 1,
+                            isDragging = isDragging,
+                            onRemove = {
+                                songToRemove = song
+                                showRemoveConfirm = true
+                            },
                             modifier = modifierWithDrag
+                                .graphicsLayer {
+                                    scaleX = dragScale
+                                    scaleY = dragScale
+                                }
+                                .then(
+                                    if (isDragging) {
+                                        Modifier.shadow(
+                                            elevation = dragElevation,
+                                            shape = RoundedCornerShape(12.dp),
+                                            ambientColor = DragElevationShadow,
+                                            spotColor = DragElevationShadow
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .animateItem()
                         )
                     }
                 }
             }
         }
     }
+
+    // Confirmation dialog for removing a song
+    if (showRemoveConfirm && songToRemove != null) {
+        ConfirmationDialog(
+            title = "Remove Song",
+            message = "Remove \"${songToRemove!!.title}\" from this playlist?",
+            confirmText = "Remove",
+            onConfirm = {
+                songToRemove?.let { songs.remove(it) }
+                showRemoveConfirm = false
+                songToRemove = null
+            },
+            onDismiss = {
+                showRemoveConfirm = false
+                songToRemove = null
+            }
+        )
+    }
 }
 
 @Composable
-private fun PlaylistSongRow(song: Song, index: Int, modifier: Modifier = Modifier) {
+private fun PlaylistSongRow(
+    song: Song,
+    index: Int,
+    isDragging: Boolean = false,
+    onRemove: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val haptic = rememberHapticFeedback()
+    val bgColor = if (isDragging) SurfaceDarkCard else SurfaceDarkCard.copy(alpha = 0.3f)
+
     Row(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceDarkCard.copy(alpha = 0.3f)).padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Drag handle
         Icon(Icons.Filled.DragHandle, "Reorder", tint = TextMuted, modifier = Modifier.size(20.dp))
@@ -123,8 +213,14 @@ private fun PlaylistSongRow(song: Song, index: Int, modifier: Modifier = Modifie
 
         Text(song.formattedDuration(), color = TextMuted, fontSize = 12.sp)
 
-        // Remove button
-        IconButton(onClick = { }, modifier = Modifier.size(48.dp)) {
+        // Remove button with haptic and confirmation
+        IconButton(
+            onClick = {
+                haptic.performClick()
+                onRemove()
+            },
+            modifier = Modifier.size(48.dp)
+        ) {
             Icon(Icons.Filled.RemoveCircleOutline, "Remove", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
         }
     }

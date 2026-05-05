@@ -1,7 +1,10 @@
 package com.ioristudios.music.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,9 +30,15 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,6 +51,9 @@ import com.ioristudios.music.ui.theme.NeonPurpleFaint
 import com.ioristudios.music.ui.theme.NeonPurpleSubtle
 import com.ioristudios.music.ui.theme.SurfaceDarkSheet
 import com.ioristudios.music.ui.theme.TextSecondary
+import com.ioristudios.music.ui.util.pressAnimation
+import com.ioristudios.music.ui.util.rememberHapticFeedback
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +69,8 @@ fun SongOptionsSheet(
     onBulkDelete: () -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showBulkDeleteConfirm by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -122,26 +136,30 @@ fun SongOptionsSheet(
                 color = NeonPurpleFaint
             )
 
-            // Options
-            OptionItem(
+            // Options with staggered entrance animation
+            AnimatedOptionItem(
                 icon = Icons.Filled.RingVolume,
                 label = "Set as Ringtone",
-                onClick = onSetRingtone
+                onClick = onSetRingtone,
+                index = 0
             )
-            OptionItem(
+            AnimatedOptionItem(
                 icon = Icons.Filled.ContentCut,
                 label = "Trim Song",
-                onClick = onTrimSong
+                onClick = onTrimSong,
+                index = 1
             )
-            OptionItem(
+            AnimatedOptionItem(
                 icon = Icons.Filled.Edit,
                 label = "Edit Song Name",
-                onClick = onEditName
+                onClick = onEditName,
+                index = 2
             )
-            OptionItem(
+            AnimatedOptionItem(
                 icon = Icons.Filled.Share,
                 label = "Share",
-                onClick = onShare
+                onClick = onShare,
+                index = 3
             )
 
             HorizontalDivider(
@@ -150,36 +168,87 @@ fun SongOptionsSheet(
                 color = NeonPurpleFaint
             )
 
-            OptionItem(
+            AnimatedOptionItem(
                 icon = Icons.Filled.Delete,
                 label = "Delete",
-                onClick = onDelete,
-                tint = ErrorRed
+                onClick = { showDeleteConfirm = true },
+                tint = ErrorRed,
+                index = 4
             )
 
             if (isMultiSelect) {
-                OptionItem(
+                AnimatedOptionItem(
                     icon = Icons.Filled.DeleteSweep,
                     label = "Bulk Delete Selected",
-                    onClick = onBulkDelete,
-                    tint = ErrorRed
+                    onClick = { showBulkDeleteConfirm = true },
+                    tint = ErrorRed,
+                    index = 5
                 )
             }
         }
     }
+
+    // Confirmation dialogs
+    if (showDeleteConfirm) {
+        ConfirmationDialog(
+            title = "Delete Song",
+            message = "Are you sure you want to delete \"${song.title}\"? This action cannot be undone.",
+            confirmText = "Delete",
+            onConfirm = {
+                showDeleteConfirm = false
+                onDelete()
+            },
+            onDismiss = { showDeleteConfirm = false }
+        )
+    }
+
+    if (showBulkDeleteConfirm) {
+        ConfirmationDialog(
+            title = "Bulk Delete",
+            message = "Are you sure you want to delete all selected songs? This action cannot be undone.",
+            confirmText = "Delete All",
+            onConfirm = {
+                showBulkDeleteConfirm = false
+                onBulkDelete()
+            },
+            onDismiss = { showBulkDeleteConfirm = false }
+        )
+    }
 }
 
 @Composable
-private fun OptionItem(
+private fun AnimatedOptionItem(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
-    tint: androidx.compose.ui.graphics.Color = NeonPurple
+    tint: androidx.compose.ui.graphics.Color = NeonPurple,
+    index: Int
 ) {
+    val haptic = rememberHapticFeedback()
+    val interactionSource = remember { MutableInteractionSource() }
+
+    // Staggered slide-in from right
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(index * 50L)
+        animatedProgress.animateTo(1f, tween(250))
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .graphicsLayer {
+                alpha = animatedProgress.value
+                translationX = (1f - animatedProgress.value) * 80f
+            }
+            .pressAnimation(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) {
+                haptic.performClick()
+                onClick()
+            }
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)

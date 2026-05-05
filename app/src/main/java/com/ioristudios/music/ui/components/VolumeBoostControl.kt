@@ -1,6 +1,8 @@
 package com.ioristudios.music.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,13 +41,22 @@ import com.ioristudios.music.ui.theme.NeonPurpleFaint
 import com.ioristudios.music.ui.theme.NeonPurpleSubtle
 import com.ioristudios.music.ui.theme.SurfaceDarkCard
 import com.ioristudios.music.ui.theme.TextSecondary
+import com.ioristudios.music.ui.util.rememberHapticFeedback
 
 @Composable
 fun VolumeBoostControl(
     modifier: Modifier = Modifier
 ) {
+    val haptic = rememberHapticFeedback()
     var isExpanded by remember { mutableStateOf(false) }
     var volumePercent by remember { mutableFloatStateOf(100f) }
+
+    // Animated icon rotation on expand/collapse
+    val iconRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(350),
+        label = "volumeIconRotation"
+    )
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -53,7 +65,10 @@ fun VolumeBoostControl(
     ) {
         // Volume toggle button
         IconButton(
-            onClick = { isExpanded = !isExpanded },
+            onClick = {
+                haptic.performClick()
+                isExpanded = !isExpanded
+            },
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(12.dp))
@@ -70,7 +85,9 @@ fun VolumeBoostControl(
                 imageVector = Icons.Filled.VolumeUp,
                 contentDescription = "Volume Boost",
                 tint = if (isExpanded) NeonPurple else TextSecondary,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer { rotationZ = iconRotation }
             )
         }
 

@@ -1,8 +1,11 @@
 package com.ioristudios.music.ui.playlists
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,12 +30,15 @@ import com.ioristudios.music.data.model.Playlist
 import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.ui.components.CreatePlaylistDialog
 import com.ioristudios.music.ui.theme.*
+import com.ioristudios.music.ui.util.pressAnimation
+import com.ioristudios.music.ui.util.rememberHapticFeedback
 
 @Composable
 fun PlaylistsScreen(
     onPlaylistClick: (Playlist) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val haptic = rememberHapticFeedback()
     var showCreateDialog by remember { mutableStateOf(false) }
     val playlists = remember { SampleData.playlists }
 
@@ -44,7 +51,10 @@ fun PlaylistsScreen(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             floatingActionButton = {
                 FloatingActionButton(
-                    onClick = { showCreateDialog = true },
+                    onClick = {
+                        haptic.performHeavyClick()
+                        showCreateDialog = true
+                    },
                     modifier = Modifier
                         .shadow(12.dp, CircleShape, ambientColor = NeonPurple.copy(alpha = 0.3f), spotColor = NeonPurpleGlow.copy(alpha = 0.4f)),
                     containerColor = NeonPurple,
@@ -55,7 +65,12 @@ fun PlaylistsScreen(
                 }
             }
         ) { paddingValues ->
-            Column(Modifier.fillMaxSize().padding(paddingValues)) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .statusBarsPadding()
+            ) {
                 // Header
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp)) {
                     Text("Playlists", color = CoreWhiteDim, fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -70,13 +85,18 @@ fun PlaylistsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(playlists, key = { it.id }) { playlist ->
-                        PlaylistCard(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                        PlaylistCard(
+                            playlist = playlist,
+                            onClick = {
+                                haptic.performClick()
+                                onPlaylistClick(playlist)
+                            },
+                            modifier = Modifier.animateItem()
+                        )
                     }
                 }
             }
         }
-
-
 
         if (showCreateDialog) {
             CreatePlaylistDialog(
@@ -88,11 +108,36 @@ fun PlaylistsScreen(
 }
 
 @Composable
-private fun PlaylistCard(playlist: Playlist, onClick: () -> Unit) {
+private fun PlaylistCard(
+    playlist: Playlist,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+
+    // Entrance animation
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        animatedProgress.animateTo(1f, tween(300))
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .background(SurfaceDarkCard).border(1.dp, NeonPurpleFaint, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick).padding(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = animatedProgress.value
+                translationY = (1f - animatedProgress.value) * 30f
+            }
+            .pressAnimation(interactionSource)
+            .clip(RoundedCornerShape(16.dp))
+            .background(SurfaceDarkCard)
+            .border(1.dp, NeonPurpleFaint, RoundedCornerShape(16.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
