@@ -96,64 +96,25 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header: "Now Playing" matching Library style
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer { alpha = headerAlpha.value },
-                contentAlignment = Alignment.Center
-            ) {
-                // Intense Glow Layer
-                Text(
-                    text = "Now Playing",
-                    color = Color.Transparent,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    style = TextStyle(
-                        shadow = Shadow(
-                            color = NeonPurpleGlow,
-                            blurRadius = 80f
-                        )
-                    )
-                )
-                // Secondary Glow Layer
-                Text(
-                    text = "Now Playing",
-                    color = Color.Transparent,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    style = TextStyle(
-                        shadow = Shadow(
-                            color = NeonPurpleGlow.copy(alpha = 0.8f),
-                            blurRadius = 40f
-                        )
-                    )
-                )
-                // Primary Text
-                Text(
-                    text = "Now Playing",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    style = TextStyle(
-                        shadow = Shadow(
-                            color = NeonPurpleGlow.copy(alpha = 0.5f),
-                            blurRadius = 15f
-                        )
-                    )
-                )
+            Spacer(Modifier.height(32.dp)) // Top gap
 
-                // Options button aligned to right
+            // Options button at top right
+            Box(Modifier.fillMaxWidth()) {
                 IconButton(
                     onClick = {
                         haptic.performClick()
                         showOptions = true
                     },
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp) // Industry standard size
                         .align(Alignment.CenterEnd)
                 ) {
-                    Icon(Icons.Filled.MoreVert, "Options", tint = CoreWhiteDim, modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        "Options",
+                        tint = CoreWhiteDim.copy(alpha = 0.7f),
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
 
@@ -174,6 +135,8 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
             ) {
                 VisualizerView(isPlaying = isPlaying, barCount = 40, modifier = Modifier.fillMaxWidth().fillMaxHeight())
             }
+
+            Spacer(Modifier.weight(1f)) // Push everything below to the bottom
 
             Spacer(Modifier.height(20.dp))
 
@@ -349,7 +312,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
 
             Spacer(Modifier.height(24.dp))
 
-            // Playback mode toggles with animated background
+            // Playback mode toggles with high-contrast active states
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -359,33 +322,32 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Shuffle
-                val shuffleColor by animateColorAsState(if (playbackMode == PlaybackMode.SHUFFLE) NeonPurple else CoreWhiteDim, tween(200), label = "sc")
-                val shuffleBgAlpha by animateFloatAsState(
-                    if (playbackMode == PlaybackMode.SHUFFLE) 1f else 0.1f,
-                    tween(200), label = "sbg"
-                )
+                val isShuffle = playbackMode == PlaybackMode.SHUFFLE
+                val shuffleColor by animateColorAsState(if (isShuffle) CoreWhite else CoreWhiteDim, tween(200), label = "sc")
+                val shuffleBgColor by animateColorAsState(if (isShuffle) NeonPurple else SurfaceDarkElevated, tween(200), label = "sbg")
+                
                 IconButton(
                     onClick = {
                         haptic.performHeavyClick()
-                        playbackMode = if (playbackMode == PlaybackMode.SHUFFLE) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE
+                        playbackMode = if (isShuffle) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE
                     },
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(NeonPurpleFaint.copy(alpha = shuffleBgAlpha))
-                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                        .background(shuffleBgColor)
+                        .border(1.dp, if (isShuffle) NeonPurpleLight else NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                 ) { Icon(Icons.Filled.Shuffle, "Shuffle", tint = shuffleColor, modifier = Modifier.size(24.dp)) }
 
                 // Normal
-                val normalBgAlpha by animateFloatAsState(
-                    if (playbackMode == PlaybackMode.NORMAL) 1f else 0.1f,
-                    tween(200), label = "nbg"
-                )
+                val isNormal = playbackMode == PlaybackMode.NORMAL
+                val normalColor by animateColorAsState(if (isNormal) CoreWhite else CoreWhiteDim, tween(200), label = "nc")
+                val normalBgColor by animateColorAsState(if (isNormal) NeonPurple else SurfaceDarkElevated, tween(200), label = "nbg")
+
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(NeonPurpleFaint.copy(alpha = normalBgAlpha))
-                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+                        .background(normalBgColor)
+                        .border(1.dp, if (isNormal) NeonPurpleLight else NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
                         .clickable(role = androidx.compose.ui.semantics.Role.Button) {
                             haptic.performHeavyClick()
                             playbackMode = PlaybackMode.NORMAL
@@ -396,32 +358,31 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 ) {
                     Text(
                         "Normal",
-                        color = if (playbackMode == PlaybackMode.NORMAL) NeonPurple else CoreWhiteDim,
+                        color = normalColor,
                         fontSize = 13.sp,
-                        fontWeight = if (playbackMode == PlaybackMode.NORMAL) FontWeight.Bold else FontWeight.Medium
+                        fontWeight = if (isNormal) FontWeight.Bold else FontWeight.Medium
                     )
                 }
 
                 // Repeat
-                val repeatColor by animateColorAsState(if (playbackMode == PlaybackMode.REPEAT) NeonPurple else CoreWhiteDim, tween(200), label = "rc")
-                val repeatBgAlpha by animateFloatAsState(
-                    if (playbackMode == PlaybackMode.REPEAT) 1f else 0.1f,
-                    tween(200), label = "rbg"
-                )
+                val isRepeat = playbackMode == PlaybackMode.REPEAT
+                val repeatColor by animateColorAsState(if (isRepeat) CoreWhite else CoreWhiteDim, tween(200), label = "rc")
+                val repeatBgColor by animateColorAsState(if (isRepeat) NeonPurple else SurfaceDarkElevated, tween(200), label = "rbg")
+
                 IconButton(
                     onClick = {
                         haptic.performHeavyClick()
-                        playbackMode = if (playbackMode == PlaybackMode.REPEAT) PlaybackMode.NORMAL else PlaybackMode.REPEAT
+                        playbackMode = if (isRepeat) PlaybackMode.NORMAL else PlaybackMode.REPEAT
                     },
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(NeonPurpleFaint.copy(alpha = repeatBgAlpha))
-                        .border(1.dp, NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                ) { Icon(if (playbackMode == PlaybackMode.REPEAT) Icons.Filled.RepeatOne else Icons.Filled.Repeat, "Repeat", tint = repeatColor, modifier = Modifier.size(24.dp)) }
+                        .background(repeatBgColor)
+                        .border(1.dp, if (isRepeat) NeonPurpleLight else NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                ) { Icon(if (isRepeat) Icons.Filled.RepeatOne else Icons.Filled.Repeat, "Repeat", tint = repeatColor, modifier = Modifier.size(24.dp)) }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(32.dp)) // Bottom gap
             // Inline volume control removed in favor of global floating bar
             // But we can keep a small indicator or button if needed. 
             // For now, let's keep it simple and clean.
