@@ -21,6 +21,12 @@ class LibraryViewModel : ViewModel() {
     private val _sortMode = MutableStateFlow(SortMode.AZ)
     val sortMode: StateFlow<SortMode> = _sortMode
 
+    private val _isSelectionMode = MutableStateFlow(false)
+    val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
+
+    private val _selectedSongIds = MutableStateFlow(setOf<Long>())
+    val selectedSongIds: StateFlow<Set<Long>> = _selectedSongIds
+
     val filteredSongs: StateFlow<List<Song>> = combine(
         _searchQuery,
         _sortMode
@@ -49,5 +55,48 @@ class LibraryViewModel : ViewModel() {
 
     fun onSortModeChange(mode: SortMode) {
         _sortMode.value = mode
+    }
+
+    fun enterSelectionMode(songId: Long) {
+        _isSelectionMode.value = true
+        _selectedSongIds.value = setOf(songId)
+    }
+
+    fun exitSelectionMode() {
+        _isSelectionMode.value = false
+        _selectedSongIds.value = emptySet()
+    }
+
+    fun toggleSelection(songId: Long) {
+        _selectedSongIds.update { current ->
+            if (current.contains(songId)) {
+                val next = current - songId
+                if (next.isEmpty()) {
+                    _isSelectionMode.value = false
+                }
+                next
+            } else {
+                current + songId
+            }
+        }
+    }
+
+    fun selectAll() {
+        _selectedSongIds.value = filteredSongs.value.map { it.id }.toSet()
+    }
+
+    fun deselectAll() {
+        _selectedSongIds.value = emptySet()
+    }
+
+    fun deleteSelected() {
+        // In a real app, this would update the database. 
+        // For sample data, we'll just log it or simulate success.
+        exitSelectionMode()
+    }
+
+    fun shareSelected() {
+        // Logic to share multiple songs
+        exitSelectionMode()
     }
 }

@@ -1,10 +1,12 @@
 package com.ioristudios.music.ui.playlists
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,14 +23,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ioristudios.music.data.model.Playlist
-import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.ui.components.CreatePlaylistDialog
+import com.ioristudios.music.ui.components.SelectionToolbar
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.pressAnimation
 import com.ioristudios.music.ui.util.rememberHapticFeedback
@@ -36,11 +40,19 @@ import com.ioristudios.music.ui.util.rememberHapticFeedback
 @Composable
 fun PlaylistsScreen(
     onPlaylistClick: (Playlist) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: PlaylistsViewModel = viewModel()
 ) {
     val haptic = rememberHapticFeedback()
     var showCreateDialog by remember { mutableStateOf(false) }
-    val playlists = remember { SampleData.playlists }
+    val playlists by viewModel.playlists.collectAsState()
+    val isSelectionMode by viewModel.isSelectionMode.collectAsState()
+    val selectedPlaylistIds by viewModel.selectedPlaylistIds.collectAsState()
+
+    // Back handler to exit selection mode
+    BackHandler(enabled = isSelectionMode) {
+        viewModel.exitSelectionMode()
+    }
 
     Box(
         modifier = modifier.fillMaxSize().background(
@@ -50,18 +62,20 @@ fun PlaylistsScreen(
         Scaffold(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = {
-                        haptic.performHeavyClick()
-                        showCreateDialog = true
-                    },
-                    modifier = Modifier
-                        .shadow(12.dp, CircleShape, ambientColor = NeonPurple.copy(alpha = 0.3f), spotColor = NeonPurpleGlow.copy(alpha = 0.4f)),
-                    containerColor = NeonPurple,
-                    contentColor = CoreWhite,
-                    shape = CircleShape
-                ) {
-                    Icon(Icons.Filled.Add, "Create Playlist")
+                if (!isSelectionMode) {
+                    FloatingActionButton(
+                        onClick = {
+                            haptic.performHeavyClick()
+                            showCreateDialog = true
+                        },
+                        modifier = Modifier
+                            .shadow(12.dp, CircleShape, ambientColor = NeonPurple.copy(alpha = 0.3f), spotColor = NeonPurpleGlow.copy(alpha = 0.4f)),
+                        containerColor = NeonPurple,
+                        contentColor = CoreWhite,
+                        shape = CircleShape
+                    ) {
+                        Icon(Icons.Filled.Add, "Create Playlist")
+                    }
                 }
             }
         ) { paddingValues ->
@@ -72,7 +86,15 @@ fun PlaylistsScreen(
                     .statusBarsPadding()
             ) {
                 // Header
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 16.dp)
+                        .graphicsLayer {
+                            alpha = if (isSelectionMode) 0f else 1f
+                        }
+                ) {
                     Text("Playlists", color = CoreWhiteDim, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text("${playlists.size} playlists", color = TextSecondary, fontSize = 13.sp)
@@ -84,19 +106,41 @@ fun PlaylistsScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    @OptIn(ExperimentalFoundationApi::class)
                     items(playlists, key = { it.id }) { playlist ->
                         PlaylistCard(
                             playlist = playlist,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedPlaylistIds.contains(playlist.id),
                             onClick = {
                                 haptic.performClick()
-                                onPlaylistClick(playlist)
+                                if (isSelectionMode) {
+                                    viewModel.toggleSelection(playlist.id)
+                                } else {
+                                    onPlaylistClick(playlist)
+                                }
                             },
+                            onLongClick = {
+                                haptic.performHeavyClick()
+                                viewModel.enterSelectionMode(playlist.id)
+                            },
+                            onToggleSelection = { viewModel.toggleSelection(playlist.id) },
                             modifier = Modifier.animateItem()
                         )
                     }
                 }
             }
         }
+
+        SelectionToolbar(
+            isVisible = isSelectionMode,
+            selectedCount = selectedPlaylistIds.size,
+            totalCount = playlists.size,
+            onClose = { viewModel.exitSelectionMode() },
+            onSelectAll = { if (it) viewModel.selectAll() else viewModel.deselectAll() },
+            onDelete = { viewModel.deleteSelected() },
+            onShare = { viewModel.shareSelected() }
+        )
 
         if (showCreateDialog) {
             CreatePlaylistDialog(
@@ -107,12 +151,18 @@ fun PlaylistsScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlaylistCard(
     playlist: Playlist,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: () -> Unit = {},
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelection: () -> Unit = {}
 ) {
+    val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
 
     // Entrance animation
@@ -130,17 +180,38 @@ private fun PlaylistCard(
             }
             .pressAnimation(interactionSource)
             .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceDarkCard)
-            .border(1.dp, NeonPurpleFaint, RoundedCornerShape(16.dp))
-            .clickable(
+            .background(if (isSelected) NeonPurpleFaint else SurfaceDarkCard)
+            .border(
+                1.dp, 
+                if (isSelected) NeonPurple else NeonPurpleFaint, 
+                RoundedCornerShape(16.dp)
+            )
+            .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = onClick
+                onClick = onClick,
+                onLongClick = onLongClick
             )
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        if (isSelectionMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { 
+                    haptic.performClick()
+                    onToggleSelection() 
+                },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = NeonPurple,
+                    uncheckedColor = Color.White.copy(alpha = 0.4f),
+                    checkmarkColor = Color.Black
+                ),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
         Box(
             modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(NeonPurpleFaint),
             contentAlignment = Alignment.Center
@@ -151,6 +222,8 @@ private fun PlaylistCard(
             Text(playlist.name, color = CoreWhiteDim, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${playlist.songs.size} songs", color = TextSecondary, fontSize = 13.sp)
         }
-        Text(playlist.createdAt, color = TextMuted, fontSize = 11.sp)
+        if (!isSelectionMode) {
+            Text(playlist.createdAt, color = TextMuted, fontSize = 11.sp)
+        }
     }
 }

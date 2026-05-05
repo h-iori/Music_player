@@ -1,5 +1,6 @@
 package com.ioristudios.music
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -38,6 +39,13 @@ fun MusicAppRoot() {
 
         // Determine if bottom nav should show
         val showBottomNav = currentRoute in listOf("library", "now_playing", "playlists")
+
+        // Back handler to ensure user goes to Library before exiting
+        BackHandler(enabled = currentRoute != "library") {
+            navController.navigate("library") {
+                popUpTo("library") { inclusive = true }
+            }
+        }
 
         Scaffold(
             containerColor = SurfaceDark,

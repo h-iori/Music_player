@@ -1,5 +1,6 @@
 package com.ioristudios.music.ui.library
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -66,6 +67,7 @@ import com.ioristudios.music.ui.theme.SurfaceGradientEnd
 import com.ioristudios.music.ui.theme.SurfaceGradientStart
 import com.ioristudios.music.ui.theme.TextMuted
 import com.ioristudios.music.ui.theme.TextSecondary
+import com.ioristudios.music.ui.components.SelectionToolbar
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 
 enum class SortMode(val label: String) {
@@ -84,12 +86,16 @@ fun LibraryScreen(
     val sortMode by viewModel.sortMode.collectAsState()
     val filteredSongs by viewModel.filteredSongs.collectAsState()
     
+    val isSelectionMode by viewModel.isSelectionMode.collectAsState()
+    val selectedSongIds by viewModel.selectedSongIds.collectAsState()
+    
     val listState = rememberLazyListState()
     
     // Animation logic for header
     val headerAlpha by remember {
         derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) 0f
+            if (isSelectionMode) 0f
+            else if (listState.firstVisibleItemIndex > 0) 0f
             else {
                 val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
                 (1f - (scrollOffset / 300f)).coerceIn(0f, 1f)
@@ -99,7 +105,8 @@ fun LibraryScreen(
     
     val headerTranslationY by remember {
         derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) -100f
+            if (isSelectionMode) -100f
+            else if (listState.firstVisibleItemIndex > 0) -100f
             else {
                 val scrollOffset = listState.firstVisibleItemScrollOffset.toFloat()
                 (-scrollOffset * 0.5f).coerceIn(-100f, 0f)
@@ -111,6 +118,11 @@ fun LibraryScreen(
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     
     val allSongsSize = SampleData.songs.size
+
+    // Back handler to exit selection mode
+    BackHandler(enabled = isSelectionMode) {
+        viewModel.exitSelectionMode()
+    }
 
     Box(
         modifier = modifier
@@ -202,70 +214,76 @@ fun LibraryScreen(
 
             // Sticky Search + Sort Row
             stickyHeader {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    SurfaceGradientStart.copy(alpha = 0.95f),
-                                    SurfaceGradientStart.copy(alpha = 0.8f)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                AnimatedVisibility(
+                    visible = !isSelectionMode,
+                    enter = fadeIn(),
+                    exit = fadeOut()
                 ) {
-                    NeonSearchBar(
-                        query = searchQuery,
-                        onQueryChange = { viewModel.onSearchQueryChange(it) },
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    Box {
-                        IconButton(
-                            onClick = {
-                                haptic.performClick()
-                                showSortMenu = true
-                            },
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceDarkCard)
-                                .border(1.dp, NeonPurpleSubtle, RoundedCornerShape(16.dp))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SortByAlpha,
-                                contentDescription = "Sort",
-                                tint = NeonPurple,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false },
-                            modifier = Modifier
-                                .background(SurfaceDarkCard)
-                                .border(1.dp, NeonPurpleFaint, RoundedCornerShape(8.dp))
-                        ) {
-                            SortMode.entries.forEach { mode ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = mode.label,
-                                            color = if (sortMode == mode) NeonPurple else CoreWhiteDim,
-                                            fontWeight = if (sortMode == mode) FontWeight.SemiBold else FontWeight.Normal,
-                                            fontSize = 14.sp
-                                        )
-                                    },
-                                    onClick = {
-                                        haptic.performClick()
-                                        viewModel.onSortModeChange(mode)
-                                        showSortMenu = false
-                                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        SurfaceGradientStart.copy(alpha = 0.95f),
+                                        SurfaceGradientStart.copy(alpha = 0.8f)
+                                    )
                                 )
+                            )
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        NeonSearchBar(
+                            query = searchQuery,
+                            onQueryChange = { viewModel.onSearchQueryChange(it) },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    haptic.performClick()
+                                    showSortMenu = true
+                                },
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(SurfaceDarkCard)
+                                    .border(1.dp, NeonPurpleSubtle, RoundedCornerShape(16.dp))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.SortByAlpha,
+                                    contentDescription = "Sort",
+                                    tint = NeonPurple,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                                modifier = Modifier
+                                    .background(SurfaceDarkCard)
+                                    .border(1.dp, NeonPurpleFaint, RoundedCornerShape(8.dp))
+                            ) {
+                                SortMode.entries.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = mode.label,
+                                                color = if (sortMode == mode) NeonPurple else CoreWhiteDim,
+                                                fontWeight = if (sortMode == mode) FontWeight.SemiBold else FontWeight.Normal,
+                                                fontSize = 14.sp
+                                            )
+                                        },
+                                        onClick = {
+                                            haptic.performClick()
+                                            viewModel.onSortModeChange(mode)
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -313,11 +331,26 @@ fun LibraryScreen(
                         song = song,
                         onClick = { onSongClick(song) },
                         onMenuClick = { selectedSong = song },
-                        modifier = Modifier.animateItem().padding(horizontal = 16.dp)
+                        modifier = Modifier.animateItem().padding(horizontal = 16.dp),
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedSongIds.contains(song.id),
+                        onToggleSelection = { viewModel.toggleSelection(song.id) },
+                        onLongClick = { viewModel.enterSelectionMode(song.id) }
                     )
                 }
             }
         }
+
+        // Selection Toolbar
+        SelectionToolbar(
+            isVisible = isSelectionMode,
+            selectedCount = selectedSongIds.size,
+            totalCount = filteredSongs.size,
+            onClose = { viewModel.exitSelectionMode() },
+            onSelectAll = { if (it) viewModel.selectAll() else viewModel.deselectAll() },
+            onDelete = { viewModel.deleteSelected() },
+            onShare = { viewModel.shareSelected() }
+        )
 
         // Song options sheet
         selectedSong?.let { song ->
