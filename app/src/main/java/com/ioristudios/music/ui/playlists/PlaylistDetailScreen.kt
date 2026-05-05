@@ -197,22 +197,44 @@ private fun PlaylistSongRow(
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHapticFeedback()
-    val bgColor = if (isDragging) SurfaceDarkCard else SurfaceDarkCard.copy(alpha = 0.3f)
+    val isPlaying = song.id == SampleData.currentSong.id
+    val bgColor = when {
+        isDragging -> SurfaceDarkCard
+        isPlaying -> NeonPurpleFaint.copy(alpha = 0.4f)
+        else -> SurfaceDarkCard.copy(alpha = 0.3f)
+    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
+            .then(
+                if (isPlaying && !isDragging) Modifier.border(1.dp, NeonPurpleSubtle.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                else Modifier
+            )
             .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Drag handle
-        Icon(Icons.Filled.DragHandle, "Reorder", tint = TextMuted, modifier = Modifier.size(20.dp))
+        // Drag handle - Only visible while dragging
+        if (isDragging) {
+            Icon(Icons.Filled.DragHandle, "Reorder", tint = NeonPurple, modifier = Modifier.size(20.dp))
+        }
 
-        // Index
-        Text("$index", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.width(24.dp))
+        // Index or Playing Icon
+        Box(modifier = Modifier.width(if (isDragging) 20.dp else 24.dp), contentAlignment = Alignment.CenterStart) {
+            if (isPlaying) {
+                Icon(
+                    Icons.Filled.GraphicEq,
+                    null,
+                    tint = NeonPurple,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else {
+                Text("$index", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
 
         // Music icon
         Box(
@@ -222,8 +244,15 @@ private fun PlaylistSongRow(
 
         // Song info
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(song.title, color = CoreWhiteDim, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(song.artist, color = TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                song.title,
+                color = if (isPlaying) NeonPurpleLight else CoreWhiteDim,
+                fontSize = 14.sp,
+                fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(song.artist, color = if (isPlaying) TextSecondary else TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         Text(song.formattedDuration(), color = TextMuted, fontSize = 12.sp)

@@ -85,7 +85,7 @@ fun AddSongsToPlaylistDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = NeonPurple, contentColor = Color.White),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Add (${selectedSongs.size})", fontWeight = FontWeight.Bold)
+                            Text("Add (${selectedSongs.size})", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }

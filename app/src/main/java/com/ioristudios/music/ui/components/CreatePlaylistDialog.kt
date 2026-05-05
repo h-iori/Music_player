@@ -157,7 +157,8 @@ fun CreatePlaylistDialog(
                     Text(
                         text = "Create",
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.sp
+                        fontSize = 15.sp,
+                        color = Color.White
                     )
                 }
             }
