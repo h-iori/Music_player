@@ -5,7 +5,13 @@ data class Song(
     val title: String,
     val artist: String,
     val duration: Long,
-    val albumArt: String? = null
+    val albumArt: String? = null,
+    val album: String = "",
+    val contentUri: String = "",
+    val filePath: String? = null,
+    val fileSize: Long = 0L,
+    val dateAdded: Long = 0L,
+    val mimeType: String = ""
 ) {
     fun formattedDuration(): String {
         val minutes = duration / 60

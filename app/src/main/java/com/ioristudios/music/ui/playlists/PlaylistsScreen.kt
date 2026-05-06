@@ -185,7 +185,10 @@ fun PlaylistsScreen(
         if (showCreateDialog) {
             CreatePlaylistDialog(
                 onDismiss = { showCreateDialog = false },
-                onCreate = { showCreateDialog = false }
+                onCreate = { name ->
+                    viewModel.createPlaylist(name)
+                    showCreateDialog = false
+                }
             )
         }
     }

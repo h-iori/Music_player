@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
@@ -35,14 +34,14 @@ import com.ioristudios.music.ui.util.rememberHapticFeedback
 @Composable
 fun AddSongsToPlaylistDialog(
     onDismiss: () -> Unit,
+    allSongs: List<Song>,
     onAddSongs: (List<Song>) -> Unit
 ) {
     val haptic = rememberHapticFeedback()
     var searchQuery by remember { mutableStateOf("") }
     val selectedSongs = remember { mutableStateListOf<Song>() }
     
-    val allSongs = remember { SampleData.songs }
-    val filteredSongs = remember(searchQuery) {
+    val filteredSongs = remember(searchQuery, allSongs) {
         if (searchQuery.isBlank()) allSongs
         else allSongs.filter { it.title.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true) }
     }

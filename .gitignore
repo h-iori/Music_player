@@ -5,3 +5,4 @@ gradle.properties
 /.gradle
 /app/build
 /.kotlin
+/.claude-flow

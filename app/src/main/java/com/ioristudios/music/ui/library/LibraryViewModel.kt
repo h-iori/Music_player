@@ -1,24 +1,32 @@
 package com.ioristudios.music.ui.library
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
-import kotlinx.coroutines.Dispatchers
+import com.ioristudios.music.data.model.Playlist
+import com.ioristudios.music.data.repository.MediaDeletePlan
+import com.ioristudios.music.data.repository.MusicRepository
+import com.ioristudios.music.playback.PlaybackService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
-class LibraryViewModel : ViewModel() {
-    private val allSongs = SampleData.songs
+class LibraryViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = MusicRepository.getInstance(application)
+    private val preferences = application.getSharedPreferences("library_preferences", Application.MODE_PRIVATE)
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
-    private val _sortMode = MutableStateFlow(SortMode.AZ)
+    private val _sortMode = MutableStateFlow(
+        runCatching { SortMode.valueOf(preferences.getString("sort_mode", SortMode.AZ.name)!!) }
+            .getOrDefault(SortMode.AZ)
+    )
     val sortMode: StateFlow<SortMode> = _sortMode
 
     private val _isSelectionMode = MutableStateFlow(false)
@@ -26,11 +34,21 @@ class LibraryViewModel : ViewModel() {
 
     private val _selectedSongIds = MutableStateFlow(setOf<Long>())
     val selectedSongIds: StateFlow<Set<Long>> = _selectedSongIds
+    val playlists: StateFlow<List<Playlist>> = repository.playlists
+
+    val songCount: StateFlow<Int> = repository.songs
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val currentSongId: StateFlow<Long?> = PlaybackService.state
+        .map { it.currentSong?.id }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val filteredSongs: StateFlow<List<Song>> = combine(
+        repository.songs,
         _searchQuery,
         _sortMode
-    ) { query, mode ->
+    ) { allSongs, query, mode ->
         val filtered = if (query.isBlank()) {
             allSongs
         } else {
@@ -46,8 +64,13 @@ class LibraryViewModel : ViewModel() {
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = allSongs
+        initialValue = emptyList()
     )
+
+    init {
+        repository.observeMediaStore()
+        repository.scanDevice()
+    }
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
@@ -55,6 +78,7 @@ class LibraryViewModel : ViewModel() {
 
     fun onSortModeChange(mode: SortMode) {
         _sortMode.value = mode
+        preferences.edit().putString("sort_mode", mode.name).apply()
     }
 
     fun enterSelectionMode(songId: Long) {
@@ -89,14 +113,20 @@ class LibraryViewModel : ViewModel() {
         _selectedSongIds.value = emptySet()
     }
 
-    fun deleteSelected() {
-        // In a real app, this would update the database. 
-        // For sample data, we'll just log it or simulate success.
+    fun prepareDeleteSelected(): MediaDeletePlan {
+        val plan = repository.prepareDelete(_selectedSongIds.value)
+        if (!plan.requiresUserApproval) exitSelectionMode()
+        return plan
+    }
+
+    fun prepareDeleteSong(songId: Long): MediaDeletePlan = repository.prepareDelete(setOf(songId))
+
+    fun completeDeleteAfterApproval(songIds: Collection<Long>) {
+        repository.completeDeleteAfterUserApproval(songIds)
         exitSelectionMode()
     }
 
     fun shareSelected() {
-        // Logic to share multiple songs
         exitSelectionMode()
     }
 }

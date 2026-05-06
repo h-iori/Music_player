@@ -2,10 +2,16 @@
 
 package com.ioristudios.music.ui.playlists
 
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -23,12 +29,17 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.data.repository.MediaDeletePlan
+import com.ioristudios.music.data.repository.MusicRepository
+import com.ioristudios.music.external.ExternalSongActions
+import com.ioristudios.music.external.RingtoneResult
+import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.components.SongOptionsSheet
 import com.ioristudios.music.ui.theme.*
@@ -45,13 +56,51 @@ fun PlaylistDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHapticFeedback()
-    val playlist = remember { SampleData.playlists.find { it.id == playlistId } ?: SampleData.playlists.first() }
+    val context = LocalContext.current
+    val repository = remember(context) { MusicRepository.getInstance(context) }
+    val playlists by repository.playlists.collectAsState()
+    val allSongs by repository.songs.collectAsState()
+    val playbackState by PlaybackService.state.collectAsState()
+    val playlist = playlists.find { it.id == playlistId }
+    if (playlist == null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Playlist not found", color = TextSecondary)
+        }
+        return
+    }
     val songs = remember(playlist) { playlist.songs.toMutableStateList() }
+    LaunchedEffect(playlist.songs) {
+        songs.clear()
+        songs.addAll(playlist.songs)
+    }
 
     var showRemoveConfirm by remember { mutableStateOf(false) }
     var songToRemove by remember { mutableStateOf<Song?>(null) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
     var selectedSongOptions by remember { mutableStateOf<Song?>(null) }
+    var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    val deletePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && pendingDeleteIds.isNotEmpty()) {
+            repository.completeDeleteAfterUserApproval(pendingDeleteIds)
+            songs.removeAll { it.id in pendingDeleteIds }
+        }
+        pendingDeleteIds = emptySet()
+        selectedSongOptions = null
+    }
+
+    fun launchDeletePlan(plan: MediaDeletePlan) {
+        if (plan.requiresUserApproval) {
+            pendingDeleteIds = plan.requestedIds
+            deletePermissionLauncher.launch(
+                IntentSenderRequest.Builder(plan.pendingIntent!!.intentSender).build()
+            )
+        } else if (plan.deletedIds.isNotEmpty()) {
+            songs.removeAll { it.id in plan.deletedIds }
+            selectedSongOptions = null
+        }
+    }
     
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -130,6 +179,7 @@ fun PlaylistDetailScreen(
                             },
                             onDragStopped = {
                                 haptic.performDragEnd()
+                                repository.reorderPlaylist(playlistId, songs.toList())
                             }
                         )
 
@@ -139,6 +189,7 @@ fun PlaylistDetailScreen(
                                     val songIndex = songs.indexOf(song)
                                     lastRemovedSong = songIndex to song
                                     songs.remove(song)
+                                    repository.removeSongFromPlaylist(playlistId, song.id)
                                     haptic.performHeavyClick()
                                     
                                     scope.launch {
@@ -150,6 +201,7 @@ fun PlaylistDetailScreen(
                                         if (result == SnackbarResult.ActionPerformed) {
                                             lastRemovedSong?.let { (idx, s) ->
                                                 songs.add(idx.coerceIn(0, songs.size), s)
+                                                repository.reorderPlaylist(playlistId, songs.toList())
                                             }
                                         }
                                         lastRemovedSong = null
@@ -213,6 +265,10 @@ fun PlaylistDetailScreen(
                                     onMenuClick = {
                                         selectedSongOptions = song
                                     },
+                                    onClick = {
+                                        PlaybackService.playQueue(context, songs.toList(), song)
+                                    },
+                                    isPlaying = song.id == playbackState.currentSong?.id,
                                     modifier = modifierWithDrag
                                         .graphicsLayer {
                                             scaleX = dragScale
@@ -261,11 +317,13 @@ fun PlaylistDetailScreen(
         if (showAddSongsDialog) {
             com.ioristudios.music.ui.components.AddSongsToPlaylistDialog(
                 onDismiss = { showAddSongsDialog = false },
+                allSongs = allSongs,
                 onAddSongs = { newSongs ->
                     // Add only those that aren't already in the playlist
                     val existingIds = songs.map { it.id }.toSet()
                     val songsToAdd = newSongs.filter { it.id !in existingIds }
                     songs.addAll(songsToAdd)
+                    repository.addSongsToPlaylist(playlistId, songsToAdd)
                     showAddSongsDialog = false
                 }
             )
@@ -275,9 +333,16 @@ fun PlaylistDetailScreen(
             SongOptionsSheet(
                 song = song,
                 onDismiss = { selectedSongOptions = null },
+                onShare = { ExternalSongActions.shareSong(context, song) },
+                onTrimAndSetRingtone = { start, end ->
+                    scope.launch {
+                        val result = ExternalSongActions.trimAndSetRingtone(context, song, start, end)
+                        Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
+                    }
+                },
+                onEditName = { ExternalSongActions.updateSongTitle(context, song, it) },
                 onDelete = {
-                    songs.remove(song)
-                    selectedSongOptions = null
+                    launchDeletePlan(repository.prepareDelete(setOf(song.id)))
                 }
             )
         }
@@ -291,6 +356,7 @@ fun PlaylistDetailScreen(
             confirmText = "Remove",
             onConfirm = {
                 songToRemove?.let { songs.remove(it) }
+                songToRemove?.let { repository.removeSongFromPlaylist(playlistId, it.id) }
                 showRemoveConfirm = false
                 songToRemove = null
             },
@@ -302,16 +368,25 @@ fun PlaylistDetailScreen(
     }
 }
 
+private fun RingtoneResult.userMessage(): String = when (this) {
+    RingtoneResult.Success -> "Ringtone set"
+    is RingtoneResult.Trimmed -> "Trimmed ringtone set"
+    RingtoneResult.NeedsWriteSettings -> "Allow system settings access, then try again"
+    is RingtoneResult.UnsupportedFormat -> "This format cannot be trimmed on this device"
+    is RingtoneResult.Failed -> reason
+}
+
 @Composable
 private fun PlaylistSongRow(
     song: Song,
     index: Int,
     isDragging: Boolean = false,
+    isPlaying: Boolean = false,
+    onClick: () -> Unit = {},
     onMenuClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHapticFeedback()
-    val isPlaying = song.id == SampleData.currentSong.id
     val bgColor = when {
         isDragging -> SurfaceDarkCard
         isPlaying -> NeonPurpleFaint.copy(alpha = 0.4f)
@@ -323,6 +398,7 @@ private fun PlaylistSongRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
+            .clickable { onClick() }
             .then(
                 if (isPlaying && !isDragging) Modifier.border(1.dp, NeonPurpleSubtle.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                 else Modifier

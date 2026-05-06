@@ -1,6 +1,11 @@
 package com.ioristudios.music.ui.library
 
+import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -39,6 +44,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,13 +54,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.data.repository.MediaDeletePlan
+import com.ioristudios.music.external.ExternalSongActions
+import com.ioristudios.music.external.DriveBackupManager
+import com.ioristudios.music.external.RingtoneResult
+import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.components.NeonSearchBar
 import com.ioristudios.music.ui.components.SongOptionsSheet
 import com.ioristudios.music.ui.components.SongRow
@@ -72,6 +83,7 @@ import com.ioristudios.music.ui.components.SelectionToolbar
 import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 import com.ioristudios.music.ui.components.AppSidebar
+import kotlinx.coroutines.launch
 
 enum class SortMode(val label: String) {
     AZ("A–Z"),
@@ -89,6 +101,16 @@ fun LibraryScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val sortMode by viewModel.sortMode.collectAsState()
     val filteredSongs by viewModel.filteredSongs.collectAsState()
+    val songCount by viewModel.songCount.collectAsState()
+    val currentSongId by viewModel.currentSongId.collectAsState()
+    val playlists by viewModel.playlists.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        result.data?.data?.let { uri ->
+            DriveBackupManager.writeBackup(context, uri, filteredSongs, playlists)
+        }
+    }
     
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedSongIds by viewModel.selectedSongIds.collectAsState()
@@ -127,9 +149,29 @@ fun LibraryScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    
-    val allSongsSize = SampleData.songs.size
+    var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    val deletePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && pendingDeleteIds.isNotEmpty()) {
+            viewModel.completeDeleteAfterApproval(pendingDeleteIds)
+        }
+        pendingDeleteIds = emptySet()
+        showDeleteConfirm = false
+        selectedSong = null
+    }
 
+    fun launchDeletePlan(plan: MediaDeletePlan) {
+        if (plan.requiresUserApproval) {
+            pendingDeleteIds = plan.requestedIds
+            val request = IntentSenderRequest.Builder(plan.pendingIntent!!.intentSender).build()
+            deletePermissionLauncher.launch(request)
+        } else {
+            showDeleteConfirm = false
+            selectedSong = null
+        }
+    }
+    
     // Back handler to exit selection mode
     BackHandler(enabled = isSelectionMode) {
         viewModel.exitSelectionMode()
@@ -215,7 +257,7 @@ fun LibraryScreen(
                         )
 
                         Text(
-                            text = "${allSongsSize} songs",
+                            text = "$songCount songs",
                             color = TextSecondary,
                             fontSize = 13.sp
                         )
@@ -362,14 +404,17 @@ fun LibraryScreen(
                 items(filteredSongs, key = { it.id }) { song ->
                     SongRow(
                         song = song,
-                        onClick = { onSongClick(song) },
+                        onClick = {
+                            PlaybackService.playQueue(context, filteredSongs, song)
+                            onSongClick(song)
+                        },
                         onMenuClick = { selectedSong = song },
                         modifier = Modifier.animateItem().padding(horizontal = 16.dp),
                         isSelectionMode = isSelectionMode,
                         isSelected = selectedSongIds.contains(song.id),
                         onToggleSelection = { viewModel.toggleSelection(song.id) },
                         onLongClick = { viewModel.enterSelectionMode(song.id) },
-                        isPlaying = song.id == SampleData.currentSong.id
+                        isPlaying = song.id == currentSongId
                     )
                 }
             }
@@ -390,7 +435,24 @@ fun LibraryScreen(
         selectedSong?.let { song ->
             SongOptionsSheet(
                 song = song,
-                onDismiss = { selectedSong = null }
+                onDismiss = { selectedSong = null },
+                onShare = {
+                    ExternalSongActions.shareSong(context, song)
+                    selectedSong = null
+                },
+                onDelete = {
+                    launchDeletePlan(viewModel.prepareDeleteSong(song.id))
+                },
+                onTrimAndSetRingtone = { start, end ->
+                    scope.launch {
+                        val result = ExternalSongActions.trimAndSetRingtone(context, song, start, end)
+                        Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
+                    }
+                },
+                onEditName = { newTitle ->
+                    ExternalSongActions.updateSongTitle(context, song, newTitle)
+                    selectedSong = null
+                }
             )
         }
 
@@ -401,8 +463,7 @@ fun LibraryScreen(
                 message = "Are you sure you want to delete ${selectedSongIds.size} selected songs? This action cannot be undone.",
                 confirmText = "Delete",
                 onConfirm = {
-                    viewModel.deleteSelected()
-                    showDeleteConfirm = false
+                    launchDeletePlan(viewModel.prepareDeleteSelected())
                 },
                 onDismiss = { showDeleteConfirm = false }
             )
@@ -413,7 +474,7 @@ fun LibraryScreen(
             isVisible = showSidebar,
             onDismiss = { showSidebar = false },
             onBackupClick = { 
-                // Backup logic could be added here
+                backupLauncher.launch(DriveBackupManager.createBackupDocumentIntent())
                 showSidebar = false 
             },
             onAboutClick = {
@@ -422,4 +483,12 @@ fun LibraryScreen(
             }
         )
     }
+}
+
+private fun RingtoneResult.userMessage(): String = when (this) {
+    RingtoneResult.Success -> "Ringtone set"
+    is RingtoneResult.Trimmed -> "Trimmed ringtone set"
+    RingtoneResult.NeedsWriteSettings -> "Allow system settings access, then try again"
+    is RingtoneResult.UnsupportedFormat -> "This format cannot be trimmed on this device"
+    is RingtoneResult.Failed -> reason
 }

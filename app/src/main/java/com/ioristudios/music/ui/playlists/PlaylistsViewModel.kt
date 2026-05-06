@@ -1,20 +1,27 @@
 package com.ioristudios.music.ui.playlists
 
-import androidx.lifecycle.ViewModel
-import com.ioristudios.music.data.model.SampleData
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.ioristudios.music.data.repository.MusicRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-class PlaylistsViewModel : ViewModel() {
-    private val _playlists = MutableStateFlow(SampleData.playlists)
-    val playlists: StateFlow<List<com.ioristudios.music.data.model.Playlist>> = _playlists
+class PlaylistsViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = MusicRepository.getInstance(application)
+    val playlists: StateFlow<List<com.ioristudios.music.data.model.Playlist>> = repository.playlists
 
     private val _isSelectionMode = MutableStateFlow(false)
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
 
     private val _selectedPlaylistIds = MutableStateFlow(setOf<Long>())
     val selectedPlaylistIds: StateFlow<Set<Long>> = _selectedPlaylistIds
+
+    init {
+        repository.refreshFromDatabase()
+    }
 
     fun enterSelectionMode(playlistId: Long) {
         _isSelectionMode.value = true
@@ -41,7 +48,7 @@ class PlaylistsViewModel : ViewModel() {
     }
 
     fun selectAll() {
-        _selectedPlaylistIds.value = _playlists.value.map { it.id }.toSet()
+        _selectedPlaylistIds.value = playlists.value.map { it.id }.toSet()
     }
 
     fun deselectAll() {
@@ -49,12 +56,17 @@ class PlaylistsViewModel : ViewModel() {
     }
 
     fun deleteSelected() {
-        // Simulation
+        repository.deletePlaylists(_selectedPlaylistIds.value)
         exitSelectionMode()
     }
 
     fun shareSelected() {
-        // Simulation
         exitSelectionMode()
+    }
+
+    fun createPlaylist(name: String) {
+        viewModelScope.launch {
+            repository.createPlaylist(name)
+        }
     }
 }

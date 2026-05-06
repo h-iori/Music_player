@@ -45,8 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.external.ExternalSongActions
 import com.ioristudios.music.ui.theme.CoreWhiteDim
 import com.ioristudios.music.ui.theme.ErrorRed
 import com.ioristudios.music.ui.theme.NeonPurple
@@ -64,8 +66,8 @@ fun SongOptionsSheet(
     song: Song,
     isMultiSelect: Boolean = false,
     onDismiss: () -> Unit,
-    onSetRingtone: () -> Unit = {},
-    onEditName: () -> Unit = {},
+    onTrimAndSetRingtone: (Float, Float) -> Unit = { _, _ -> },
+    onEditName: (String) -> Unit = {},
     onShare: () -> Unit = {},
     onDelete: () -> Unit = {},
     onBulkDelete: () -> Unit = {}
@@ -75,6 +77,8 @@ fun SongOptionsSheet(
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
     var showTrimDialog by remember { mutableStateOf(false) }
     var showDetailsDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editedTitle by remember(song.id) { mutableStateOf(song.title) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -156,7 +160,7 @@ fun SongOptionsSheet(
             AnimatedOptionItem(
                 icon = Icons.Filled.Edit,
                 label = "Edit Song Name",
-                onClick = onEditName,
+                onClick = { showEditDialog = true },
                 index = 2
             )
             AnimatedOptionItem(
@@ -199,7 +203,7 @@ fun SongOptionsSheet(
             onDismiss = { showTrimDialog = false },
             onSave = { start, end ->
                 showTrimDialog = false
-                onSetRingtone() // Proceed with setting ringtone after trim
+                onTrimAndSetRingtone(start, end)
             }
         )
     }
@@ -237,17 +241,44 @@ fun SongOptionsSheet(
             title = { Text("Song Details", color = NeonPurple, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DetailRow("Title", song.title)
-                    DetailRow("Artist", song.artist)
-                    DetailRow("Duration", song.formattedDuration())
-                    DetailRow("Format", "MP3 / 320kbps")
-                    DetailRow("Size", "8.4 MB")
-                    DetailRow("Path", "/storage/emulated/0/Music/${song.title}.mp3")
+                    ExternalSongActions.detailsFor(song).forEach { (label, value) ->
+                        DetailRow(label, value)
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showDetailsDialog = false }) {
                     Text("Close", color = NeonPurple)
+                }
+            },
+            containerColor = SurfaceDarkSheet,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    if (showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Edit Song Name", color = NeonPurple, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = editedTitle,
+                    onValueChange = { editedTitle = it },
+                    singleLine = true,
+                    label = { Text("Title") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onEditName(editedTitle)
+                    showEditDialog = false
+                }) {
+                    Text("Save", color = NeonPurple)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
                 }
             },
             containerColor = SurfaceDarkSheet,

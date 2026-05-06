@@ -11,6 +11,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -30,10 +31,12 @@ import com.ioristudios.music.ui.VolumeViewModel
 import com.ioristudios.music.ui.components.VolumeBoostControl
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ioristudios.music.ui.about.AboutScreen
+import com.ioristudios.music.playback.PlaybackService
 
 @Composable
 fun MusicAppRoot() {
     MusicTheme {
+        val context = LocalContext.current
         val navController = rememberNavController()
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route ?: "library"
@@ -161,7 +164,10 @@ fun MusicAppRoot() {
                 ) {
                     VolumeBoostControl(
                         volumePercent = volumePercent,
-                        onVolumeChange = { volumeViewModel.setVolume(it) },
+                        onVolumeChange = {
+                            volumeViewModel.setVolume(it)
+                            PlaybackService.setVolume(context, it)
+                        },
                         isFloating = true
                     )
                 }

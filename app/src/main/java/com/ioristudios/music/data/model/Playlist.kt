@@ -4,5 +4,6 @@ data class Playlist(
     val id: Long,
     val name: String,
     val songs: List<Song> = emptyList(),
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val modifiedAt: String = createdAt
 )

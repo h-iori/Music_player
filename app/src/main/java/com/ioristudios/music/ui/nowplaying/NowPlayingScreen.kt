@@ -2,6 +2,7 @@
 
 package com.ioristudios.music.ui.nowplaying
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -38,13 +39,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ioristudios.music.data.model.SampleData
+import com.ioristudios.music.data.playback.PlaybackMode
+import com.ioristudios.music.external.ExternalSongActions
+import com.ioristudios.music.external.RingtoneResult
+import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.components.NeonSlider
 import com.ioristudios.music.ui.components.SongOptionsSheet
 import com.ioristudios.music.ui.components.VisualizerView
@@ -52,23 +57,28 @@ import com.ioristudios.music.ui.components.VolumeBoostControl
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.pressAnimation
 import com.ioristudios.music.ui.util.rememberHapticFeedback
-import kotlinx.coroutines.isActive
-
-enum class PlaybackMode { NORMAL, SHUFFLE, REPEAT }
+import kotlinx.coroutines.launch
 
 @Composable
 fun NowPlayingScreen(modifier: Modifier = Modifier) {
     val haptic = rememberHapticFeedback()
-    val currentSong = remember { SampleData.currentSong }
-    var isPlaying by remember { mutableStateOf(true) }
-    var seekPosition by remember { mutableFloatStateOf(0.38f) }
-    var playbackMode by remember { mutableStateOf(PlaybackMode.NORMAL) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val playbackState by PlaybackService.state.collectAsState()
+    val currentSong = playbackState.currentSong
+    val isPlaying = playbackState.isPlaying
+    val seekPosition = remember(playbackState.positionSeconds, playbackState.durationSeconds) {
+        if (playbackState.durationSeconds > 0) {
+            playbackState.positionSeconds.toFloat() / playbackState.durationSeconds.toFloat()
+        } else 0f
+    }.coerceIn(0f, 1f)
+    val playbackMode = playbackState.mode
     var isFavorite by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
-    var lastSeekDecile by remember { mutableIntStateOf((0.38f * 10).toInt()) }
+    var lastSeekDecile by remember { mutableIntStateOf((seekPosition * 10).toInt()) }
 
-    val currentTime = remember(seekPosition, currentSong) {
-        val totalSeconds = (currentSong.duration * seekPosition).toLong()
+    val currentTime = remember(playbackState.positionSeconds) {
+        val totalSeconds = playbackState.positionSeconds
         "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
     }
 
@@ -152,7 +162,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    currentSong.title,
+                    currentSong?.title ?: "No song selected",
                     color = CoreWhite,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
@@ -202,7 +212,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
 
             Spacer(Modifier.height(4.dp))
             Text(
-                currentSong.artist,
+                currentSong?.artist ?: "Choose a song from Library",
                 color = TextSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Start,
@@ -227,13 +237,14 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                             haptic.performSelection()
                             lastSeekDecile = newDecile
                         }
-                        seekPosition = newValue
+                        val target = ((currentSong?.duration ?: playbackState.durationSeconds) * newValue).toLong()
+                        PlaybackService.seek(context, target)
                     }
                 )
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(currentTime, color = TextMuted, fontSize = 12.sp)
-                    Text(currentSong.formattedDuration(), color = TextMuted, fontSize = 12.sp)
+                    Text(currentSong?.formattedDuration() ?: "0:00", color = TextMuted, fontSize = 12.sp)
                 }
             }
 
@@ -250,7 +261,10 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 // Previous
                 val prevInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = { haptic.performClick() },
+                    onClick = {
+                        haptic.performClick()
+                        PlaybackService.previous(context)
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .pressAnimation(prevInteraction)
@@ -267,7 +281,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 IconButton(
                     onClick = {
                         haptic.performHeavyClick()
-                        isPlaying = !isPlaying
+                        PlaybackService.toggle(context)
                     },
                     modifier = Modifier
                         .size(64.dp)
@@ -297,7 +311,10 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 // Next
                 val nextInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = { haptic.performClick() },
+                    onClick = {
+                        haptic.performClick()
+                        PlaybackService.next(context)
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .pressAnimation(nextInteraction)
@@ -328,9 +345,9 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 
                 IconButton(
                     onClick = {
-                        haptic.performHeavyClick()
-                        playbackMode = if (isShuffle) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE
-                    },
+                            haptic.performHeavyClick()
+                            PlaybackService.setMode(context, if (isShuffle) PlaybackMode.NORMAL else PlaybackMode.SHUFFLE)
+                        },
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -350,7 +367,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                         .border(1.dp, if (isNormal) NeonPurpleLight else NeonPurpleFaint.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
                         .clickable(role = androidx.compose.ui.semantics.Role.Button) {
                             haptic.performHeavyClick()
-                            playbackMode = PlaybackMode.NORMAL
+                            PlaybackService.setMode(context, PlaybackMode.NORMAL)
                         }
                         .defaultMinSize(minHeight = 44.dp)
                         .padding(horizontal = 16.dp),
@@ -371,9 +388,9 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
 
                 IconButton(
                     onClick = {
-                        haptic.performHeavyClick()
-                        playbackMode = if (isRepeat) PlaybackMode.NORMAL else PlaybackMode.REPEAT
-                    },
+                            haptic.performHeavyClick()
+                            PlaybackService.setMode(context, if (isRepeat) PlaybackMode.NORMAL else PlaybackMode.REPEAT)
+                        },
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -390,10 +407,26 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
     }
 
     // Options sheet overlay
-    if (showOptions) {
+    if (showOptions && currentSong != null) {
         SongOptionsSheet(
             song = currentSong,
-            onDismiss = { showOptions = false }
+            onDismiss = { showOptions = false },
+            onShare = { ExternalSongActions.shareSong(context, currentSong) },
+            onTrimAndSetRingtone = { start, end ->
+                scope.launch {
+                    val result = ExternalSongActions.trimAndSetRingtone(context, currentSong, start, end)
+                    Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
+                }
+            },
+            onEditName = { ExternalSongActions.updateSongTitle(context, currentSong, it) }
         )
     }
+}
+
+private fun RingtoneResult.userMessage(): String = when (this) {
+    RingtoneResult.Success -> "Ringtone set"
+    is RingtoneResult.Trimmed -> "Trimmed ringtone set"
+    RingtoneResult.NeedsWriteSettings -> "Allow system settings access, then try again"
+    is RingtoneResult.UnsupportedFormat -> "This format cannot be trimmed on this device"
+    is RingtoneResult.Failed -> reason
 }
