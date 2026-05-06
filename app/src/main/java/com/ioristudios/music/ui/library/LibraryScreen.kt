@@ -152,7 +152,7 @@ fun LibraryScreen(
         ) {
             // Header Item
             item {
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .graphicsLayer {
@@ -160,66 +160,88 @@ fun LibraryScreen(
                             translationY = headerTranslationY
                         }
                         .padding(horizontal = 20.dp)
-                        .padding(top = 8.dp) // Minimal top padding
+                        .padding(top = 8.dp)
                 ) {
-                    Box {
-                        // Intense Glow Layer
-                        Text(
-                            text = "Music",
-                            color = Color.Transparent,
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            style = TextStyle(
-                                shadow = Shadow(
-                                    color = NeonPurpleGlow,
-                                    blurRadius = 80f
+                    Column {
+                        Box {
+                            // Intense Glow Layer
+                            Text(
+                                text = "Music",
+                                color = Color.Transparent,
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                style = TextStyle(
+                                    shadow = Shadow(
+                                        color = NeonPurpleGlow,
+                                        blurRadius = 80f
+                                    )
                                 )
                             )
-                        )
-                        // Secondary Glow Layer
-                        Text(
-                            text = "Music",
-                            color = Color.Transparent,
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            style = TextStyle(
-                                shadow = Shadow(
-                                    color = NeonPurpleGlow.copy(alpha = 0.8f),
-                                    blurRadius = 40f
+                            // Secondary Glow Layer
+                            Text(
+                                text = "Music",
+                                color = Color.Transparent,
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                style = TextStyle(
+                                    shadow = Shadow(
+                                        color = NeonPurpleGlow.copy(alpha = 0.8f),
+                                        blurRadius = 40f
+                                    )
                                 )
                             )
-                        )
-                        // Primary Text
-                        Text(
-                            text = "Music",
-                            color = Color.White,
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            style = TextStyle(
-                                shadow = Shadow(
-                                    color = NeonPurpleGlow.copy(alpha = 0.5f),
-                                    blurRadius = 15f
+                            // Primary Text
+                            Text(
+                                text = "Music",
+                                color = Color.White,
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                style = TextStyle(
+                                    shadow = Shadow(
+                                        color = NeonPurpleGlow.copy(alpha = 0.5f),
+                                        blurRadius = 15f
+                                    )
                                 )
                             )
+                        }
+
+                        Text(
+                            text = "by IORI STUDIOS",
+                            color = NeonPurple.copy(alpha = 0.8f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.sp,
+                            modifier = Modifier.padding(top = 0.dp, bottom = 4.dp)
                         )
+
+                        Text(
+                            text = "${allSongsSize} songs",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    Text(
-                        text = "by IORI STUDIOS",
-                        color = NeonPurple.copy(alpha = 0.8f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp,
-                        modifier = Modifier.padding(top = 0.dp, bottom = 4.dp)
-                    )
-
-                    Text(
-                        text = "${allSongsSize} songs",
-                        color = TextSecondary,
-                        fontSize = 13.sp
-                    )
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
+                    // Hamburger Icon inside header Box
+                    if (!isSelectionMode) {
+                        IconButton(
+                            onClick = {
+                                haptic.performClick()
+                                showSidebar = true
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = "Menu",
+                                tint = NeonPurple,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -384,27 +406,6 @@ fun LibraryScreen(
                 },
                 onDismiss = { showDeleteConfirm = false }
             )
-        }
-
-        // Hamburger Icon
-        if (!isSelectionMode) {
-            IconButton(
-                onClick = {
-                    haptic.performClick()
-                    showSidebar = true
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, end = 12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Menu,
-                    contentDescription = "Menu",
-                    tint = NeonPurple,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
         }
 
         // Sidebar Overlay

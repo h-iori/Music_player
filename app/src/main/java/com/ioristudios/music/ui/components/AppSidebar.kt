@@ -1,24 +1,34 @@
 package com.ioristudios.music.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ioristudios.music.R
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 
@@ -41,7 +51,7 @@ fun AppSidebar(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.6f))
+                    .background(Color.Black.copy(alpha = 0.7f))
                     .clickable { onDismiss() }
             )
         }
@@ -56,46 +66,70 @@ fun AppSidebar(
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(280.dp),
+                    .width(300.dp),
                 color = SurfaceDarkSheet,
-                tonalElevation = 8.dp,
+                tonalElevation = 12.dp,
                 shape = RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp),
-                border = BorderStroke(1.dp, NeonPurpleSubtle)
+                border = BorderStroke(1.dp, Brush.verticalGradient(listOf(NeonPurpleSubtle, Color.Transparent)))
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 24.dp, vertical = 40.dp)
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Text(
-                        text = "Menu",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier.padding(bottom = 32.dp)
+                    // 1. Profile Header
+                    SidebarHeader()
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        thickness = 0.5.dp,
+                        color = NeonPurpleFaint
                     )
 
-                    SidebarItem(
-                        icon = Icons.Filled.Backup,
-                        label = "Backup",
-                        onClick = {
-                            haptic.performClick()
-                            onBackupClick()
-                        }
-                    )
+                    // 2. Navigation Items (Staggered)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp, vertical = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StaggeredSidebarItem(
+                            index = 0,
+                            visible = isVisible,
+                            icon = Icons.Filled.Backup,
+                            label = "Backup Music",
+                            onClick = {
+                                haptic.performClick()
+                                onBackupClick()
+                            }
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    SidebarItem(
-                        icon = Icons.Filled.Info,
-                        label = "About",
-                        onClick = {
-                            haptic.performClick()
-                            onAboutClick()
-                        }
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
+                    // 3. Footer / Bottom Items
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .padding(bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StaggeredSidebarItem(
+                            index = 2,
+                            visible = isVisible,
+                            icon = Icons.Filled.Info,
+                            label = "About Developer",
+                            onClick = {
+                                haptic.performClick()
+                                onAboutClick()
+                            }
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Text(
+                            text = "Version 1.1.0",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                            modifier = Modifier.padding(start = 12.dp)
+                        )
+                    }
                 }
             }
         }
@@ -103,30 +137,96 @@ fun AppSidebar(
 }
 
 @Composable
-private fun SidebarItem(
+private fun SidebarHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp)
+            .padding(top = 32.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(NeonPurpleSubtle)
+                .border(2.dp, NeonPurple, CircleShape)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.dev_profile),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = "Harsh Swatantra Upadhyay",
+            style = MaterialTheme.typography.titleMedium,
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "AI Engineer • IORI STUDIOS",
+            style = MaterialTheme.typography.bodySmall,
+            color = NeonPurple,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun StaggeredSidebarItem(
+    index: Int,
+    visible: Boolean,
     icon: ImageVector,
     label: String,
     onClick: () -> Unit
 ) {
+    val animAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, delayMillis = 100 + (index * 50)),
+        label = "itemAlpha"
+    )
+    
+    val animTranslationX by animateFloatAsState(
+        targetValue = if (visible) 0f else 40f,
+        animationSpec = tween(durationMillis = 400, delayMillis = 100 + (index * 50)),
+        label = "itemSlide"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .graphicsLayer {
+                alpha = animAlpha
+                translationX = animTranslationX
+            }
+            .clip(RoundedCornerShape(16.dp))
             .clickable { onClick() }
-            .padding(vertical = 14.dp, horizontal = 12.dp),
+            .padding(vertical = 12.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = NeonPurple,
-            modifier = Modifier.size(24.dp)
-        )
+        Surface(
+            modifier = Modifier.size(40.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = NeonPurpleFaint
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = NeonPurple,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
         Text(
             text = label,
             color = TextPrimary,
-            fontSize = 17.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
