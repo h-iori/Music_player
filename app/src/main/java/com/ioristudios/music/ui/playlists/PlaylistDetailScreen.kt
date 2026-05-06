@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,8 +30,10 @@ import androidx.compose.ui.unit.sp
 import com.ioristudios.music.data.model.SampleData
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.ui.components.ConfirmationDialog
+import com.ioristudios.music.ui.components.SongOptionsSheet
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
+import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -48,6 +51,13 @@ fun PlaylistDetailScreen(
     var showRemoveConfirm by remember { mutableStateOf(false) }
     var songToRemove by remember { mutableStateOf<Song?>(null) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
+    var selectedSongOptions by remember { mutableStateOf<Song?>(null) }
+    
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    
+    // For Undo logic
+    var lastRemovedSong by remember { mutableStateOf<Pair<Int, Song>?>(null) }
 
     val listState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(listState, onMove = { from, to ->
@@ -81,7 +91,7 @@ fun PlaylistDetailScreen(
                         Icon(Icons.Filled.PlaylistAdd, "Add Songs", tint = NeonPurple)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
 
             // Song count info
@@ -123,37 +133,130 @@ fun PlaylistDetailScreen(
                             }
                         )
 
-                        PlaylistSongRow(
-                            song = song,
-                            index = index + 1,
-                            isDragging = isDragging,
-                            onRemove = {
-                                songToRemove = song
-                                showRemoveConfirm = true
-                            },
-                            modifier = modifierWithDrag
-                                .graphicsLayer {
-                                    scaleX = dragScale
-                                    scaleY = dragScale
-                                }
-                                .then(
-                                    if (isDragging) {
-                                        Modifier.shadow(
-                                            elevation = dragElevation,
-                                            shape = RoundedCornerShape(12.dp),
-                                            ambientColor = DragElevationShadow,
-                                            spotColor = DragElevationShadow
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { value ->
+                                if (value == SwipeToDismissBoxValue.StartToEnd) {
+                                    val songIndex = songs.indexOf(song)
+                                    lastRemovedSong = songIndex to song
+                                    songs.remove(song)
+                                    haptic.performHeavyClick()
+                                    
+                                    scope.launch {
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = "Removed \"${song.title}\"",
+                                            actionLabel = "Undo",
+                                            duration = SnackbarDuration.Short
                                         )
-                                    } else {
-                                        Modifier
+                                        if (result == SnackbarResult.ActionPerformed) {
+                                            lastRemovedSong?.let { (idx, s) ->
+                                                songs.add(idx.coerceIn(0, songs.size), s)
+                                            }
+                                        }
+                                        lastRemovedSong = null
                                     }
+                                    true
+                                } else false
+                            }
+                        )
+
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromEndToStart = false,
+                            backgroundContent = {
+                                if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
+                                    val color = ErrorRed.copy(alpha = 0.8f)
+                                    val offset = dismissState.requireOffset()
+                                    val density = androidx.compose.ui.platform.LocalDensity.current
+                                    val widthDp = with(density) { offset.coerceAtLeast(0f).toDp() }
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .width(widthDp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(color)
+                                            .padding(horizontal = 20.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.wrapContentWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Delete, 
+                                                null, 
+                                                tint = Color.White,
+                                                modifier = Modifier.graphicsLayer {
+                                                    // Fade in text/icon as it slides
+                                                    alpha = (offset / 300f).coerceIn(0f, 1f)
+                                                }
+                                            )
+                                            Text(
+                                                "Removed",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                modifier = Modifier.graphicsLayer {
+                                                    alpha = (offset / 300f).coerceIn(0f, 1f)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            content = {
+                                PlaylistSongRow(
+                                    song = song,
+                                    index = index + 1,
+                                    isDragging = isDragging,
+                                    onMenuClick = {
+                                        selectedSongOptions = song
+                                    },
+                                    modifier = modifierWithDrag
+                                        .graphicsLayer {
+                                            scaleX = dragScale
+                                            scaleY = dragScale
+                                        }
+                                        .then(
+                                            if (isDragging) {
+                                                Modifier.shadow(
+                                                    elevation = dragElevation,
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    ambientColor = DragElevationShadow,
+                                                    spotColor = DragElevationShadow
+                                                )
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .animateItem()
                                 )
-                                .animateItem()
+                            }
                         )
                     }
                 }
             }
         }
+
+        // Snackbar for Undo
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+                .padding(horizontal = 16.dp),
+            snackbar = { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = SurfaceDarkElevated,
+                    contentColor = CoreWhite,
+                    actionColor = NeonPurple,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.border(0.5.dp, NeonPurpleFaint, RoundedCornerShape(12.dp))
+                )
+            }
+        )
 
         if (showAddSongsDialog) {
             com.ioristudios.music.ui.components.AddSongsToPlaylistDialog(
@@ -164,6 +267,17 @@ fun PlaylistDetailScreen(
                     val songsToAdd = newSongs.filter { it.id !in existingIds }
                     songs.addAll(songsToAdd)
                     showAddSongsDialog = false
+                }
+            )
+        }
+
+        selectedSongOptions?.let { song ->
+            SongOptionsSheet(
+                song = song,
+                onDismiss = { selectedSongOptions = null },
+                onDelete = {
+                    songs.remove(song)
+                    selectedSongOptions = null
                 }
             )
         }
@@ -193,7 +307,7 @@ private fun PlaylistSongRow(
     song: Song,
     index: Int,
     isDragging: Boolean = false,
-    onRemove: () -> Unit = {},
+    onMenuClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHapticFeedback()
@@ -257,15 +371,15 @@ private fun PlaylistSongRow(
 
         Text(song.formattedDuration(), color = TextMuted, fontSize = 12.sp)
 
-        // Remove button with haptic and confirmation
+        // Options menu button
         IconButton(
             onClick = {
                 haptic.performClick()
-                onRemove()
+                onMenuClick()
             },
             modifier = Modifier.size(48.dp)
         ) {
-            Icon(Icons.Filled.RemoveCircleOutline, "Remove", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
+            Icon(Icons.Filled.MoreVert, "Options", tint = TextSecondary, modifier = Modifier.size(24.dp))
         }
     }
 }

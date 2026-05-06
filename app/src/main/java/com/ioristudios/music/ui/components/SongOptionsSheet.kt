@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.RingVolume
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +44,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.ui.theme.CoreWhiteDim
 import com.ioristudios.music.ui.theme.ErrorRed
@@ -71,6 +74,7 @@ fun SongOptionsSheet(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
     var showTrimDialog by remember { mutableStateOf(false) }
+    var showDetailsDialog by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -138,22 +142,28 @@ fun SongOptionsSheet(
 
             // Options with staggered entrance animation
             AnimatedOptionItem(
+                icon = Icons.Filled.Info,
+                label = "Details",
+                onClick = { showDetailsDialog = true },
+                index = 0
+            )
+            AnimatedOptionItem(
                 icon = Icons.Filled.RingVolume,
                 label = "Set as Ringtone",
                 onClick = { showTrimDialog = true },
-                index = 0
+                index = 1
             )
             AnimatedOptionItem(
                 icon = Icons.Filled.Edit,
                 label = "Edit Song Name",
                 onClick = onEditName,
-                index = 1
+                index = 2
             )
             AnimatedOptionItem(
                 icon = Icons.Filled.Share,
                 label = "Share",
                 onClick = onShare,
-                index = 2
+                index = 3
             )
 
             HorizontalDivider(
@@ -167,7 +177,7 @@ fun SongOptionsSheet(
                 label = "Delete",
                 onClick = { showDeleteConfirm = true },
                 tint = ErrorRed,
-                index = 3
+                index = 4
             )
 
             if (isMultiSelect) {
@@ -176,7 +186,7 @@ fun SongOptionsSheet(
                     label = "Bulk Delete Selected",
                     onClick = { showBulkDeleteConfirm = true },
                     tint = ErrorRed,
-                    index = 4
+                    index = 5
                 )
             }
         }
@@ -219,6 +229,38 @@ fun SongOptionsSheet(
             },
             onDismiss = { showBulkDeleteConfirm = false }
         )
+    }
+
+    if (showDetailsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDetailsDialog = false },
+            title = { Text("Song Details", color = NeonPurple, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DetailRow("Title", song.title)
+                    DetailRow("Artist", song.artist)
+                    DetailRow("Duration", song.formattedDuration())
+                    DetailRow("Format", "MP3 / 320kbps")
+                    DetailRow("Size", "8.4 MB")
+                    DetailRow("Path", "/storage/emulated/0/Music/${song.title}.mp3")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetailsDialog = false }) {
+                    Text("Close", color = NeonPurple)
+                }
+            },
+            containerColor = SurfaceDarkSheet,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(text = label, color = TextSecondary, fontSize = 13.sp)
+        Text(text = value, color = CoreWhiteDim, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 

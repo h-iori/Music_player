@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Checkbox
@@ -37,6 +39,7 @@ import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.ui.theme.CoreWhiteDim
 import com.ioristudios.music.ui.theme.NeonPurple
 import com.ioristudios.music.ui.theme.NeonPurpleFaint
+import com.ioristudios.music.ui.theme.NeonPurpleLight
 import com.ioristudios.music.ui.theme.TextMuted
 import com.ioristudios.music.ui.theme.TextSecondary
 import com.ioristudios.music.ui.util.pressAnimation
@@ -52,6 +55,7 @@ fun SongRow(
     onLongClick: () -> Unit = {},
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    isPlaying: Boolean = false,
     onToggleSelection: () -> Unit = {}
 ) {
     val haptic = rememberHapticFeedback()
@@ -73,7 +77,15 @@ fun SongRow(
             .pressAnimation(interactionSource)
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (isSelected) NeonPurpleFaint else androidx.compose.ui.graphics.Color.Transparent
+                when {
+                    isSelected -> NeonPurpleFaint
+                    isPlaying -> NeonPurple.copy(alpha = 0.15f)
+                    else -> Color.Transparent
+                }
+            )
+            .then(
+                if (isPlaying) Modifier.border(1.dp, NeonPurple.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                else Modifier
             )
             .combinedClickable(
                 interactionSource = interactionSource,
@@ -120,7 +132,7 @@ fun SongRow(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.MusicNote,
+                imageVector = if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote,
                 contentDescription = null,
                 tint = NeonPurple,
                 modifier = Modifier.size(24.dp)
@@ -134,9 +146,9 @@ fun SongRow(
         ) {
             Text(
                 text = song.title,
-                color = CoreWhiteDim,
+                color = if (isPlaying) NeonPurpleLight else CoreWhiteDim,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

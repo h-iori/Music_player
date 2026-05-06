@@ -337,7 +337,8 @@ fun LibraryScreen(
                         isSelectionMode = isSelectionMode,
                         isSelected = selectedSongIds.contains(song.id),
                         onToggleSelection = { viewModel.toggleSelection(song.id) },
-                        onLongClick = { viewModel.enterSelectionMode(song.id) }
+                        onLongClick = { viewModel.enterSelectionMode(song.id) },
+                        isPlaying = song.id == SampleData.currentSong.id
                     )
                 }
             }
