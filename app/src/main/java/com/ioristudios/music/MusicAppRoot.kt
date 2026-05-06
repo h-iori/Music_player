@@ -29,6 +29,7 @@ import com.ioristudios.music.ui.util.AnimDuration
 import com.ioristudios.music.ui.VolumeViewModel
 import com.ioristudios.music.ui.components.VolumeBoostControl
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ioristudios.music.ui.about.AboutScreen
 
 @Composable
 fun MusicAppRoot() {
@@ -107,6 +108,9 @@ fun MusicAppRoot() {
                                     launchSingleTop = true
                                     restoreState = true
                                 }
+                            },
+                            onAboutClick = {
+                                navController.navigate("about")
                             }
                         )
                     }
@@ -130,6 +134,12 @@ fun MusicAppRoot() {
                         val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: 1L
                         PlaylistDetailScreen(
                             playlistId = playlistId,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable("about") {
+                        AboutScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }

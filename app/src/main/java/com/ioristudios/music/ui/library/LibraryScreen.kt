@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.DropdownMenu
@@ -70,6 +71,7 @@ import com.ioristudios.music.ui.theme.TextSecondary
 import com.ioristudios.music.ui.components.SelectionToolbar
 import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.util.rememberHapticFeedback
+import com.ioristudios.music.ui.components.AppSidebar
 
 enum class SortMode(val label: String) {
     AZ("A–Z"),
@@ -79,6 +81,7 @@ enum class SortMode(val label: String) {
 @Composable
 fun LibraryScreen(
     onSongClick: (Song) -> Unit = {},
+    onAboutClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel()
 ) {
@@ -91,6 +94,12 @@ fun LibraryScreen(
     val selectedSongIds by viewModel.selectedSongIds.collectAsState()
     
     val listState = rememberLazyListState()
+    var showSidebar by remember { mutableStateOf(false) }
+
+    // Back handler to close sidebar if open
+    BackHandler(enabled = showSidebar) {
+        showSidebar = false
+    }
     
     // Animation logic for header
     val headerAlpha by remember {
@@ -376,5 +385,40 @@ fun LibraryScreen(
                 onDismiss = { showDeleteConfirm = false }
             )
         }
+
+        // Hamburger Icon
+        if (!isSelectionMode) {
+            IconButton(
+                onClick = {
+                    haptic.performClick()
+                    showSidebar = true
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp, end = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Menu,
+                    contentDescription = "Menu",
+                    tint = NeonPurple,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        // Sidebar Overlay
+        AppSidebar(
+            isVisible = showSidebar,
+            onDismiss = { showSidebar = false },
+            onBackupClick = { 
+                // Backup logic could be added here
+                showSidebar = false 
+            },
+            onAboutClick = {
+                showSidebar = false
+                onAboutClick()
+            }
+        )
     }
 }
