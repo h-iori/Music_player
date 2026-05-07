@@ -24,7 +24,9 @@ import com.ioristudios.music.ui.theme.NeonPurple
 import com.ioristudios.music.ui.theme.NeonPurpleDark
 import com.ioristudios.music.ui.theme.NeonPurpleGlow
 import com.ioristudios.music.ui.theme.CoreWhite
+import androidx.compose.runtime.*
 import kotlin.math.sin
+import kotlin.math.PI
 
 @Composable
 fun VisualizerView(
@@ -32,37 +34,24 @@ fun VisualizerView(
     barCount: Int = 32,
     isPlaying: Boolean = true
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "visualizer")
+    var time by remember { mutableFloatStateOf(0f) }
 
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase"
-    )
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            var lastTime = System.currentTimeMillis()
+            while (true) {
+                val currentTime = System.currentTimeMillis()
+                val delta = currentTime - lastTime
+                lastTime = currentTime
+                time += delta / 1000f
+                kotlinx.coroutines.delay(16)
+            }
+        }
+    }
 
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-
-    val wave2 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(4200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wave2"
-    )
+    val phase = time * (2f * PI.toFloat() / 3f)
+    val pulse = 0.8f + 0.2f * sin(time * (2f * PI.toFloat() / 1.5f))
+    val wave2 = time * (2f * PI.toFloat() / 4.2f)
 
     Canvas(
         modifier = modifier

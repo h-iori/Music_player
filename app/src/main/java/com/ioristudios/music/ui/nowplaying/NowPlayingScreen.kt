@@ -106,6 +106,11 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
         "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
     }
 
+    val totalDuration = remember(playbackState.durationSeconds) {
+        val totalSeconds = playbackState.durationSeconds
+        "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+    }
+
 
     // Staggered entrance animations
     val headerAlpha = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -262,14 +267,14 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                             haptic.performSelection()
                             lastSeekDecile = newDecile
                         }
-                        val target = ((currentSong?.duration ?: playbackState.durationSeconds) * newValue).toLong()
+                        val target = (playbackState.durationSeconds * newValue).toLong()
                         PlaybackService.seek(context, target)
                     }
                 )
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(currentTime, color = TextMuted, fontSize = 12.sp)
-                    Text(currentSong?.formattedDuration() ?: "0:00", color = TextMuted, fontSize = 12.sp)
+                    Text(totalDuration, color = TextMuted, fontSize = 12.sp)
                 }
             }
 

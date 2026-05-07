@@ -34,20 +34,25 @@ import com.ioristudios.music.ui.about.AboutScreen
 import com.ioristudios.music.playback.PlaybackService
 
 @Composable
-fun MusicAppRoot() {
+fun MusicAppRoot(isExternalIntent: Boolean = false) {
     MusicTheme {
         val context = LocalContext.current
         val navController = rememberNavController()
+        val startDest = if (isExternalIntent) "now_playing" else "library"
         val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = navBackStackEntry?.destination?.route ?: "library"
+        val currentRoute = navBackStackEntry?.destination?.route ?: startDest
 
         // Determine if bottom nav should show
-        val showBottomNav = currentRoute in listOf("library", "now_playing", "playlists")
+        val showBottomNav = !isExternalIntent && currentRoute in listOf("library", "now_playing", "playlists")
 
-        // Back handler to ensure user goes to Library before exiting
-        BackHandler(enabled = currentRoute != "library") {
-            navController.navigate("library") {
-                popUpTo("library") { inclusive = true }
+        // Back handler to ensure user goes to Library before exiting, or finishes activity if in external mode
+        BackHandler(enabled = isExternalIntent || currentRoute != "library") {
+            if (isExternalIntent) {
+                (context as? android.app.Activity)?.finish()
+            } else {
+                navController.navigate("library") {
+                    popUpTo("library") { inclusive = true }
+                }
             }
         }
 
@@ -77,7 +82,7 @@ fun MusicAppRoot() {
             ) {
                 NavHost(
                     navController = navController,
-                    startDestination = "library",
+                    startDestination = startDest,
                     enterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { it / 4 },

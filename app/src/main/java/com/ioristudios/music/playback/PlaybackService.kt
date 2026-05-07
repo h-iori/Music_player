@@ -118,7 +118,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!_state.value.isPlaying) refreshNotification() else startForeground(NOTIFICATION_ID, buildNotification())
+        if (!_state.value.isPlaying) {
+            stopPlayback(stopService = true)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
         super.onTaskRemoved(rootIntent)
     }
 
@@ -203,8 +207,22 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             setDataSource(applicationContext, uri)
             setOnPreparedListener {
+                val actualDuration = (duration / 1000L).coerceAtLeast(0L)
+                val state = _state.value
+                val index = state.queueIndex
+                var updatedQueue = state.queue
+                
+                if (index in state.queue.indices) {
+                    val current = state.queue[index]
+                    if (current.duration == 0L && actualDuration > 0) {
+                        val newSong = current.copy(duration = actualDuration)
+                        updatedQueue = state.queue.toMutableList().apply { set(index, newSong) }
+                    }
+                }
+
                 updateState(
-                    duration = (duration / 1000L).takeIf { it > 0 } ?: song.duration,
+                    queue = updatedQueue,
+                    duration = actualDuration.takeIf { it > 0 } ?: song.duration,
                     audioSessionId = audioSessionId,
                     status = if (autoPlay) PlaybackStatus.PLAYING else PlaybackStatus.PAUSED,
                     error = null

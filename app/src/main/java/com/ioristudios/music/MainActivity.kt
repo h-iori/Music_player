@@ -14,6 +14,8 @@ import android.os.Environment
 import android.provider.Settings
 import android.net.Uri
 import androidx.core.view.WindowCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 import android.view.KeyEvent
 import androidx.lifecycle.ViewModelProvider
@@ -23,6 +25,7 @@ import com.ioristudios.music.ui.VolumeViewModel
 
 class MainActivity : ComponentActivity() {
     private lateinit var volumeViewModel: VolumeViewModel
+    private var isExternalIntent by androidx.compose.runtime.mutableStateOf(false)
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -37,7 +40,7 @@ class MainActivity : ComponentActivity() {
         requestRuntimePermissions()
         handleIncomingIntent(intent)
         setContent {
-            MusicAppRoot()
+            MusicAppRoot(isExternalIntent = isExternalIntent)
         }
     }
 
@@ -94,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent?.action == Intent.ACTION_VIEW && intent.data != null) {
+            isExternalIntent = true
             PlaybackService.playUri(this, intent.data!!)
         }
     }
