@@ -107,6 +107,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         scope.launch {
             var isFirstCollection = true
             repository.songs.collect { songs ->
+                // Ignore initial empty list if repository is still loading from DB.
+                // If the user truly has zero songs, this will eventually emit an empty list again
+                // but by then the race condition is usually over.
+                if (songs.isEmpty() && isFirstCollection) return@collect
+
                 val state = _state.value
                 val byId = songs.associateBy { it.id }
 
@@ -595,15 +600,21 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private fun startProgressUpdates() {
         progressJob?.cancel()
         progressJob = scope.launch {
+            var lastSaveTime = System.currentTimeMillis()
             while (isActive) {
                 player?.let {
                     val newPos = (it.currentPosition / 1000L).coerceAtLeast(0L)
                     val newDur = (it.duration / 1000L).coerceAtLeast(_state.value.durationSeconds)
                     val current = _state.value
-                    // Only emit when values actually changed — avoids allocating a new
-                    // PlaybackState copy and triggering downstream recomposition for nothing.
+                    
                     if (newPos != current.positionSeconds || newDur != current.durationSeconds) {
                         updateState(position = newPos, duration = newDur)
+                        
+                        // Proactively save playback position every 5 seconds while playing
+                        if (System.currentTimeMillis() - lastSaveTime > 5000L) {
+                            persistState()
+                            lastSaveTime = System.currentTimeMillis()
+                        }
                     }
                 }
                 delay(500L)
@@ -865,7 +876,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             .putString(KEY_SHUFFLE_INDICES, state.shuffleIndices.joinToString(","))
             .putInt(KEY_SHUFFLE_POS, state.shufflePosition)
             .putFloat(KEY_VOLUME, state.volumePercent)
-            .apply()
+            .commit() // Use commit() for synchronous write to survive app kill
     }
 
     private fun restoreState(availableSongs: List<Song>) {
