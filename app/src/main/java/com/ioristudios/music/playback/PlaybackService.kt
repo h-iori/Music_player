@@ -12,9 +12,14 @@ import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.VectorDrawable
 import android.media.MediaPlayer
-import android.media.session.MediaSession
-import android.media.session.PlaybackState
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
+import androidx.core.app.NotificationCompat
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
@@ -22,6 +27,9 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.ioristudios.music.MainActivity
 import com.ioristudios.music.R
 import com.ioristudios.music.data.model.Song
@@ -45,10 +53,12 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var repository: MusicRepository
     private lateinit var audioManager: AudioManager
-    private lateinit var mediaSession: MediaSession
+    private lateinit var mediaSession: MediaSessionCompat
     private var focusRequest: AudioFocusRequest? = null
     private var player: MediaPlayer? = null
     private var progressJob: Job? = null
+    private var albumArtJob: Job? = null
+    private var currentAlbumArt: Bitmap? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var shouldResumeOnFocusGain = false
     private var noisyReceiverRegistered = false
@@ -67,8 +77,8 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         super.onCreate()
         repository = MusicRepository.getInstance(this)
         audioManager = getSystemService(AudioManager::class.java)
-        mediaSession = MediaSession(this, "MusicPlaybackSession").apply {
-            setCallback(object : MediaSession.Callback() {
+        mediaSession = MediaSessionCompat(this, "MusicPlaybackSession").apply {
+            setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() = resumePlayback()
                 override fun onPause() = pausePlayback()
                 override fun onSkipToNext() = skipNext()
@@ -351,7 +361,6 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
                         position = (it.currentPosition / 1000L).coerceAtLeast(0L),
                         duration = (it.duration / 1000L).coerceAtLeast(_state.value.durationSeconds)
                     )
-                    updateMediaSession()
                 }
                 delay(500L)
             }
@@ -426,46 +435,87 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         error: String? = _state.value.errorMessage
     ) {
         val boundedIndex = if (queue.isEmpty()) -1 else queueIndex.coerceIn(queue.indices)
+        val oldSong = _state.value.currentSong
+        val newSong = queue.getOrNull(boundedIndex)
         _state.value = com.ioristudios.music.data.playback.PlaybackState(
-            currentSong = queue.getOrNull(boundedIndex),
+            currentSong = newSong,
             queue = queue,
             queueIndex = boundedIndex,
             positionSeconds = position,
-            durationSeconds = duration.takeIf { it > 0 } ?: queue.getOrNull(boundedIndex)?.duration ?: 0L,
+            durationSeconds = duration.takeIf { it > 0 } ?: newSong?.duration ?: 0L,
             status = status,
             mode = mode,
             volumePercent = volume,
             audioSessionId = audioSessionId,
             errorMessage = error
         )
-        updateMediaSession()
+        if (oldSong?.id != newSong?.id) {
+            loadAlbumArt(newSong)
+        } else {
+            updateMediaSession()
+        }
+    }
+
+    private fun loadAlbumArt(song: Song?) {
+        albumArtJob?.cancel()
+        if (song == null) {
+            currentAlbumArt = null
+            updateMediaSession()
+            return
+        }
+        albumArtJob = scope.launch {
+            val dataToLoad: Any = song.albumArt.takeIf { !it.isNullOrBlank() } ?: R.drawable.default_album_art
+            val request = ImageRequest.Builder(this@PlaybackService)
+                .data(dataToLoad)
+                .size(512)
+                .allowHardware(false) // Must be false for RemoteViews/Notifications
+                .build()
+            val result = this@PlaybackService.imageLoader.execute(request)
+            currentAlbumArt = result.drawable?.toBitmap()
+            updateMediaSession()
+        }
     }
 
     private fun updateMediaSession() {
         val state = _state.value
-        val playbackState = PlaybackState.Builder()
+        val playbackState = PlaybackStateCompat.Builder()
             .setActions(
-                PlaybackState.ACTION_PLAY or
-                    PlaybackState.ACTION_PAUSE or
-                    PlaybackState.ACTION_PLAY_PAUSE or
-                    PlaybackState.ACTION_SKIP_TO_NEXT or
-                    PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                    PlaybackState.ACTION_SEEK_TO or
-                    PlaybackState.ACTION_STOP
+                PlaybackStateCompat.ACTION_PLAY or
+                    PlaybackStateCompat.ACTION_PAUSE or
+                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackStateCompat.ACTION_SEEK_TO or
+                    PlaybackStateCompat.ACTION_STOP
             )
             .setState(
                 when (state.status) {
-                    PlaybackStatus.PLAYING -> PlaybackState.STATE_PLAYING
-                    PlaybackStatus.PAUSED -> PlaybackState.STATE_PAUSED
-                    PlaybackStatus.LOADING -> PlaybackState.STATE_BUFFERING
-                    PlaybackStatus.ERROR -> PlaybackState.STATE_ERROR
-                    PlaybackStatus.IDLE -> PlaybackState.STATE_STOPPED
+                    PlaybackStatus.PLAYING -> PlaybackStateCompat.STATE_PLAYING
+                    PlaybackStatus.PAUSED -> PlaybackStateCompat.STATE_PAUSED
+                    PlaybackStatus.LOADING -> PlaybackStateCompat.STATE_BUFFERING
+                    PlaybackStatus.ERROR -> PlaybackStateCompat.STATE_ERROR
+                    PlaybackStatus.IDLE -> PlaybackStateCompat.STATE_STOPPED
                 },
                 state.positionSeconds * 1000L,
-                if (state.isPlaying) 1f else 0f
+                if (state.isPlaying) 1f else 0f,
+                android.os.SystemClock.elapsedRealtime()
             )
             .build()
         mediaSession.setPlaybackState(playbackState)
+
+        val metadataBuilder = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, state.currentSong?.title ?: getString(R.string.app_name))
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, state.currentSong?.artist ?: "Ready")
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationSeconds * 1000L)
+            
+        currentAlbumArt?.let {
+            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+        }
+        
+        mediaSession.setMetadata(metadataBuilder.build())
+        
+        // Ensure notification is up to date with new metadata/state
+        refreshNotification()
     }
 
     private fun refreshNotification() {
@@ -487,33 +537,31 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         )
         val playPauseAction = if (state.isPlaying) action(R.drawable.ic_media_pause, "Pause", ACTION_PAUSE, 2)
         else action(R.drawable.ic_media_play, "Play", ACTION_PLAY, 3)
-        return Notification.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(state.currentSong?.title ?: getString(R.string.app_name))
             .setContentText(state.currentSong?.artist ?: "Ready")
+            .setLargeIcon(currentAlbumArt)
             .setContentIntent(contentIntent)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setOngoing(state.isPlaying)
-            .setProgress(
-                state.durationSeconds.toInt().coerceAtLeast(0),
-                state.positionSeconds.toInt().coerceAtLeast(0),
-                state.status == PlaybackStatus.LOADING
-            )
+            .setColorized(true)
+            .setColor(ContextCompat.getColor(this, R.color.surface_dark_elevated))
             .addAction(action(R.drawable.ic_media_previous, "Previous", ACTION_PREVIOUS, 4))
             .addAction(playPauseAction)
             .addAction(action(R.drawable.ic_media_next, "Next", ACTION_NEXT, 5))
             .setStyle(
-                Notification.MediaStyle()
+                androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(mediaSession.sessionToken)
                     .setShowActionsInCompactView(0, 1, 2)
             )
             .build()
     }
 
-    private fun action(iconRes: Int, title: String, action: String, requestCode: Int): Notification.Action =
-        Notification.Action.Builder(
-            android.graphics.drawable.Icon.createWithResource(this, iconRes),
+    private fun action(iconRes: Int, title: String, action: String, requestCode: Int): NotificationCompat.Action =
+        NotificationCompat.Action.Builder(
+            iconRes,
             title,
             serviceIntent(action, requestCode)
         ).build()
