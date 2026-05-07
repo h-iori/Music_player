@@ -80,6 +80,20 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         }
         createNotificationChannel()
         restoreState()
+
+        scope.launch {
+            repository.songs.collect { songs ->
+                val state = _state.value
+                if (state.queue.isEmpty()) return@collect
+                
+                val byId = songs.associateBy { it.id }
+                val newQueue = state.queue.map { song -> byId[song.id] ?: song }
+                
+                if (newQueue != state.queue) {
+                    updateState(queue = newQueue)
+                }
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder

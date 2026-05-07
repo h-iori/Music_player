@@ -42,6 +42,7 @@ import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.data.repository.MediaDeletePlan
 import com.ioristudios.music.data.repository.MusicRepository
 import com.ioristudios.music.external.ExternalSongActions
+import com.ioristudios.music.external.SongEditResult
 import com.ioristudios.music.external.RingtoneResult
 import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.components.ConfirmationDialog
@@ -63,6 +64,7 @@ fun PlaylistDetailScreen(
 ) {
     val haptic = rememberHapticFeedback()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val repository = remember(context) { MusicRepository.getInstance(context) }
     val playlists by repository.playlists.collectAsState()
     val allSongs by repository.songs.collectAsState()
@@ -84,6 +86,23 @@ fun PlaylistDetailScreen(
     var songToRemove by remember { mutableStateOf<Song?>(null) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
     var selectedSongOptions by remember { mutableStateOf<Song?>(null) }
+    var pendingTitleUpdate by remember { mutableStateOf<Pair<Song, String>?>(null) }
+    val editPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && pendingTitleUpdate != null) {
+            val (song, title) = pendingTitleUpdate!!
+            scope.launch {
+                val res = ExternalSongActions.updateSongTitle(context, song, title)
+                if (res is SongEditResult.Success) {
+                    Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
+                } else if (res is SongEditResult.Failed) {
+                    Toast.makeText(context, res.reason, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        pendingTitleUpdate = null
+    }
     var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val deletePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -109,7 +128,6 @@ fun PlaylistDetailScreen(
     }
     
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     
     // For Undo logic
     var lastRemovedSong by remember { mutableStateOf<Pair<Int, Song>?>(null) }
@@ -349,7 +367,27 @@ fun PlaylistDetailScreen(
                         Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
                     }
                 },
-                onEditName = { ExternalSongActions.updateSongTitle(context, song, it) },
+                onEditName = { newTitle ->
+                    val result = ExternalSongActions.updateSongTitle(context, song, newTitle)
+                    when (result) {
+                        SongEditResult.Success -> {
+                            Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
+                        }
+                        is SongEditResult.RequiresPermission -> {
+                            pendingTitleUpdate = song to newTitle
+                            editPermissionLauncher.launch(
+                                IntentSenderRequest.Builder(result.intent.intentSender).build()
+                            )
+                        }
+                        is SongEditResult.Failed -> {
+                            Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                        }
+                        SongEditResult.LocalOnly -> {
+                            Toast.makeText(context, "Updated locally only", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    selectedSongOptions = null
+                },
                 onDelete = {
                     launchDeletePlan(repository.prepareDelete(setOf(song.id)))
                 }

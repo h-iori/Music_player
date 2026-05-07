@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import com.ioristudios.music.external.SongEditResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -155,6 +156,24 @@ fun LibraryScreen(
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var pendingTitleUpdate by remember { mutableStateOf<Pair<Song, String>?>(null) }
+    val editPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && pendingTitleUpdate != null) {
+            val (song, title) = pendingTitleUpdate!!
+            scope.launch {
+                val res = ExternalSongActions.updateSongTitle(context, song, title)
+                if (res is SongEditResult.Success) {
+                    Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
+                } else if (res is SongEditResult.Failed) {
+                    Toast.makeText(context, res.reason, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        pendingTitleUpdate = null
+    }
+
     val deletePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -462,7 +481,24 @@ fun LibraryScreen(
                     }
                 },
                 onEditName = { newTitle ->
-                    ExternalSongActions.updateSongTitle(context, song, newTitle)
+                    val result = ExternalSongActions.updateSongTitle(context, song, newTitle)
+                    when (result) {
+                        SongEditResult.Success -> {
+                            Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
+                        }
+                        is SongEditResult.RequiresPermission -> {
+                            pendingTitleUpdate = song to newTitle
+                            editPermissionLauncher.launch(
+                                IntentSenderRequest.Builder(result.intent.intentSender).build()
+                            )
+                        }
+                        is SongEditResult.Failed -> {
+                            Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                        }
+                        SongEditResult.LocalOnly -> {
+                            Toast.makeText(context, "Updated locally only", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     selectedSong = null
                 }
             )

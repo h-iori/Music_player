@@ -233,6 +233,9 @@ class MusicRepository private constructor(context: Context) {
             add(MediaStore.Audio.Media.DATE_ADDED)
             add(MediaStore.Audio.Media.MIME_TYPE)
             add(MediaStore.Audio.Media.DISPLAY_NAME)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.Audio.Media.VOLUME_NAME)
+            }
             @Suppress("DEPRECATION")
             add(MediaStore.Audio.Media.DATA)
         }.toTypedArray()
@@ -255,6 +258,9 @@ class MusicRepository private constructor(context: Context) {
             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val displayCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val volCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.VOLUME_NAME)
+            } else -1
             @Suppress("DEPRECATION")
             val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             buildList {
@@ -276,6 +282,18 @@ class MusicRepository private constructor(context: Context) {
                     val albumArt = if (albumId > 0) {
                         ContentUris.withAppendedId(ALBUM_ART_BASE_URI, albumId).toString()
                     } else null
+                    val volumeName = if (volCol != -1) cursor.getString(volCol) else "external"
+                    val songUri = when {
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                            MediaStore.Audio.Media.getContentUri(volumeName, id)
+                        }
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                            ContentUris.withAppendedId(MediaStore.Audio.Media.getContentUri(volumeName), id)
+                        }
+                        else -> {
+                            ContentUris.withAppendedId(collection, id)
+                        }
+                    }
                     add(
                         Song(
                             id = id,
@@ -284,7 +302,7 @@ class MusicRepository private constructor(context: Context) {
                             album = album,
                             duration = durationMs / 1000L,
                             albumArt = albumArt,
-                            contentUri = ContentUris.withAppendedId(collection, id).toString(),
+                            contentUri = songUri.toString(),
                             filePath = cursor.getString(dataCol),
                             fileSize = cursor.getLong(sizeCol),
                             dateAdded = cursor.getLong(dateCol),

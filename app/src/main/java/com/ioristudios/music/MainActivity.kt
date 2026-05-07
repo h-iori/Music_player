@@ -10,6 +10,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
+import android.os.Environment
+import android.provider.Settings
+import android.net.Uri
 import androidx.core.view.WindowCompat
 
 import android.view.KeyEvent
@@ -75,6 +78,18 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (permissions.isNotEmpty()) permissionLauncher.launch(permissions.toTypedArray())
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${packageName}")
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                startActivity(intent)
+            }
+        }
     }
 
     private fun handleIncomingIntent(intent: Intent?) {

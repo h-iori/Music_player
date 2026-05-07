@@ -1,15 +1,24 @@
 package com.ioristudios.music.external
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.RingtoneManager
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.data.repository.MusicRepository
+import android.app.PendingIntent
+import android.app.RecoverableSecurityException
+import android.content.ContentUris
+import android.media.MediaScannerConnection
+import android.os.Build
+import android.os.Environment
 import java.io.File
 
 object ExternalSongActions {
@@ -64,17 +73,84 @@ object ExternalSongActions {
     fun updateSongTitle(context: Context, song: Song, newTitle: String): SongEditResult {
         val title = newTitle.trim()
         if (title.isBlank()) return SongEditResult.Failed("Title cannot be empty")
+        
         val uri = song.contentUri.takeIf { it.isNotBlank() }?.let(Uri::parse)
-        val mediaStoreUpdated = if (uri != null) {
-            runCatching {
-                val values = ContentValues().apply { put(MediaStore.Audio.Media.TITLE, title) }
-                context.contentResolver.update(uri, values, null, null) > 0
-            }.getOrDefault(false)
+            ?: return SongEditResult.Failed("No content Uri for this song")
+
+        val hasFullAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
         } else {
-            false
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         }
-        MusicRepository.getInstance(context).updateSongTitle(song.id, title)
-        return if (mediaStoreUpdated) SongEditResult.Success else SongEditResult.LocalOnly
+
+        return try {
+            val values = ContentValues().apply { 
+                put(MediaStore.Audio.Media.TITLE, title)
+                // Also update display name to help refresh metadata
+                val ext = song.filePath?.substringAfterLast('.', "mp3")?.ifBlank { "mp3" } ?: "mp3"
+                put(MediaStore.Audio.Media.DISPLAY_NAME, "$title.$ext")
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                runCatching {
+                    val pendingValues = ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 1) }
+                    context.contentResolver.update(uri, pendingValues, null, null)
+                }
+            }
+
+            // Try updating with the direct URI first
+            var rowsUpdated = context.contentResolver.update(uri, values, null, null)
+            
+            // Fallback: try updating by ID
+            if (rowsUpdated == 0) {
+                runCatching {
+                    val id = ContentUris.parseId(uri)
+                    rowsUpdated = context.contentResolver.update(
+                        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                        values,
+                        "${MediaStore.Audio.Media._ID} = ?",
+                        arrayOf(id.toString())
+                    )
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                runCatching {
+                    val finalValues = ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }
+                    context.contentResolver.update(uri, finalValues, null, null)
+                }
+            }
+
+            if (rowsUpdated > 0) {
+                MusicRepository.getInstance(context).updateSongTitle(song.id, title)
+                SongEditResult.Success
+            } else if (hasFullAccess && !song.filePath.isNullOrBlank()) {
+                // Brute force: rename the file on disk
+                val file = File(song.filePath)
+                val newFile = File(file.parent, "$title.${file.extension}")
+                if (file.exists() && file.renameTo(newFile)) {
+                    MediaScannerConnection.scanFile(context, arrayOf(newFile.absolutePath), null) { _, _ ->
+                        MusicRepository.getInstance(context).scanDevice()
+                    }
+                    SongEditResult.Success
+                } else {
+                    SongEditResult.Failed("MediaStore update failed even with filesystem access.")
+                }
+            } else {
+                SongEditResult.Failed("MediaStore update failed. The file might be protected or the URI is invalid.")
+            }
+        } catch (security: SecurityException) {
+            if (hasFullAccess) {
+                SongEditResult.Failed("Access denied even with All Files Access: ${security.message}")
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && security is RecoverableSecurityException) {
+                SongEditResult.RequiresPermission(security.userAction.actionIntent)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val pendingIntent = MediaStore.createWriteRequest(context.contentResolver, listOf(uri))
+                SongEditResult.RequiresPermission(pendingIntent)
+            } else {
+                SongEditResult.Failed(security.message ?: "Permission denied")
+            }
+        }
     }
 
     fun detailsFor(song: Song): List<Pair<String, String>> = listOf(
@@ -119,5 +195,6 @@ sealed interface RingtoneResult {
 sealed interface SongEditResult {
     data object Success : SongEditResult
     data object LocalOnly : SongEditResult
+    data class RequiresPermission(val intent: PendingIntent) : SongEditResult
     data class Failed(val reason: String) : SongEditResult
 }

@@ -46,8 +46,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.data.playback.PlaybackMode
 import com.ioristudios.music.external.ExternalSongActions
+import com.ioristudios.music.external.SongEditResult
 import com.ioristudios.music.external.RingtoneResult
 import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.components.NeonSlider
@@ -76,6 +82,24 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
     var isFavorite by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
     var lastSeekDecile by remember { mutableIntStateOf((seekPosition * 10).toInt()) }
+    
+    var pendingTitleUpdate by remember { mutableStateOf<Pair<Song, String>?>(null) }
+    val editPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && pendingTitleUpdate != null) {
+            val (song, title) = pendingTitleUpdate!!
+            scope.launch {
+                val res = ExternalSongActions.updateSongTitle(context, song, title)
+                if (res is SongEditResult.Success) {
+                    Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
+                } else if (res is SongEditResult.Failed) {
+                    Toast.makeText(context, res.reason, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        pendingTitleUpdate = null
+    }
 
     val currentTime = remember(playbackState.positionSeconds) {
         val totalSeconds = playbackState.positionSeconds
@@ -420,7 +444,27 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                     Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
                 }
             },
-            onEditName = { ExternalSongActions.updateSongTitle(context, currentSong, it) }
+            onEditName = { newTitle ->
+                val result = ExternalSongActions.updateSongTitle(context, currentSong, newTitle)
+                when (result) {
+                    SongEditResult.Success -> {
+                        Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
+                    }
+                    is SongEditResult.RequiresPermission -> {
+                        pendingTitleUpdate = currentSong to newTitle
+                        editPermissionLauncher.launch(
+                            IntentSenderRequest.Builder(result.intent.intentSender).build()
+                        )
+                    }
+                    is SongEditResult.Failed -> {
+                        Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                    }
+                    SongEditResult.LocalOnly -> {
+                        Toast.makeText(context, "Updated locally only", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                showOptions = false
+            }
         )
     }
 }
