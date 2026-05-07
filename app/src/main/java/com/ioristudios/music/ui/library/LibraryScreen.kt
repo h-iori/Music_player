@@ -25,9 +25,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -80,8 +83,10 @@ import com.ioristudios.music.ui.theme.SurfaceGradientStart
 import com.ioristudios.music.ui.theme.TextMuted
 import com.ioristudios.music.ui.theme.TextSecondary
 import com.ioristudios.music.ui.components.SelectionToolbar
+import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.util.rememberHapticFeedback
+import kotlinx.coroutines.delay
 import com.ioristudios.music.ui.components.AppSidebar
 import kotlinx.coroutines.launch
 
@@ -401,15 +406,18 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                items(filteredSongs, key = { it.id }) { song ->
+                itemsIndexed(filteredSongs, key = { _, song -> song.id }) { index, song ->
                     SongRow(
                         song = song,
+                        index = index,
                         onClick = {
-                            PlaybackService.playQueue(context, filteredSongs, song)
+                            if (song.id != currentSongId) {
+                                PlaybackService.playQueue(context, filteredSongs, song)
+                            }
                             onSongClick(song)
                         },
                         onMenuClick = { selectedSong = song },
-                        modifier = Modifier.animateItem().padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         isSelectionMode = isSelectionMode,
                         isSelected = selectedSongIds.contains(song.id),
                         onToggleSelection = { viewModel.toggleSelection(song.id) },
@@ -428,7 +436,11 @@ fun LibraryScreen(
             onClose = { viewModel.exitSelectionMode() },
             onSelectAll = { if (it) viewModel.selectAll() else viewModel.deselectAll() },
             onDelete = { showDeleteConfirm = true },
-            onShare = { viewModel.shareSelected() }
+            onShare = {
+                val songs = viewModel.getSelectedSongs()
+                ExternalSongActions.shareSongs(context, songs)
+                viewModel.exitSelectionMode()
+            }
         )
 
         // Song options sheet

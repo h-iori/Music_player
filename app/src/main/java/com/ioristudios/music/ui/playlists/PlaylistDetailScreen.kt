@@ -7,8 +7,12 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,6 +48,7 @@ import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.components.SongOptionsSheet
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -53,6 +58,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 fun PlaylistDetailScreen(
     playlistId: Long,
     onBack: () -> Unit = {},
+    onSongClick: (Song) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHapticFeedback()
@@ -260,13 +266,16 @@ fun PlaylistDetailScreen(
                             content = {
                                 PlaylistSongRow(
                                     song = song,
-                                    index = index + 1,
+                                    index = index,
                                     isDragging = isDragging,
                                     onMenuClick = {
                                         selectedSongOptions = song
                                     },
                                     onClick = {
-                                        PlaybackService.playQueue(context, songs.toList(), song)
+                                        if (song.id != (playbackState.currentSong?.id ?: -1L)) {
+                                            PlaybackService.playQueue(context, songs.toList(), song)
+                                        }
+                                        onSongClick(song)
                                     },
                                     isPlaying = song.id == playbackState.currentSong?.id,
                                     modifier = modifierWithDrag
@@ -387,6 +396,14 @@ private fun PlaylistSongRow(
     modifier: Modifier = Modifier
 ) {
     val haptic = rememberHapticFeedback()
+
+    // Staggered Entrance Animation — optimized for enterprise performance
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(index.coerceAtMost(12) * 30L)
+        animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+    }
+
     val bgColor = when {
         isDragging -> SurfaceDarkCard
         isPlaying -> NeonPurpleFaint.copy(alpha = 0.4f)
@@ -396,6 +413,10 @@ private fun PlaylistSongRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                alpha = animatedProgress.value
+                translationY = (1f - animatedProgress.value) * 40f
+            }
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
             .clickable { onClick() }
@@ -422,7 +443,7 @@ private fun PlaylistSongRow(
                     modifier = Modifier.size(18.dp)
                 )
             } else {
-                Text("$index", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("${index + 1}", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
         }
 

@@ -69,7 +69,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         repository.observeMediaStore()
-        repository.scanDevice()
     }
 
     fun onSearchQueryChange(query: String) {
@@ -126,7 +125,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         exitSelectionMode()
     }
 
-    fun shareSelected() {
-        exitSelectionMode()
+    fun getSelectedSongs(): List<Song> {
+        val selectedIds = _selectedSongIds.value
+        return filteredSongs.value.filter { it.id in selectedIds }
     }
 }

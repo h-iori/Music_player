@@ -1,6 +1,7 @@
 package com.ioristudios.music.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -44,11 +45,13 @@ import com.ioristudios.music.ui.theme.TextMuted
 import com.ioristudios.music.ui.theme.TextSecondary
 import com.ioristudios.music.ui.util.pressAnimation
 import com.ioristudios.music.ui.util.rememberHapticFeedback
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SongRow(
     song: Song,
+    index: Int = 0,
     onClick: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -61,18 +64,23 @@ fun SongRow(
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
 
-    // Entrance animation — fade + slide in from bottom
+    // Staggered Entrance Animation — optimized for enterprise performance
     val animatedProgress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        animatedProgress.animateTo(1f, tween(300))
+        // Stagger the start time based on index to prevent "frame jams" on navigation
+        // We cap the stagger at 12 items to ensure items further down don't wait too long
+        delay(index.coerceAtMost(12) * 30L)
+        animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
     }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
+                // Using graphicsLayer ensures these changes happen in the DRAW phase, 
+                // avoiding expensive layout/recomposition passes.
                 alpha = animatedProgress.value
-                translationY = (1f - animatedProgress.value) * 30f
+                translationY = (1f - animatedProgress.value) * 40f
             }
             .pressAnimation(interactionSource)
             .clip(RoundedCornerShape(12.dp))

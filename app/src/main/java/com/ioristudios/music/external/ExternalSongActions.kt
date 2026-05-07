@@ -24,6 +24,22 @@ object ExternalSongActions {
         return true
     }
 
+    fun shareSongs(context: Context, songs: List<Song>): Boolean {
+        if (songs.isEmpty()) return false
+        if (songs.size == 1) return shareSong(context, songs[0])
+
+        val uris = ArrayList<Uri>(songs.mapNotNull { shareableUri(context, it) })
+        if (uris.isEmpty()) return false
+
+        val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "audio/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share songs").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return true
+    }
+
     fun setAsRingtone(context: Context, song: Song): RingtoneResult {
         if (!Settings.System.canWrite(context)) {
             requestWriteSettings(context)

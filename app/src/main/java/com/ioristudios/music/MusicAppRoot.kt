@@ -137,7 +137,14 @@ fun MusicAppRoot() {
                         val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: 1L
                         PlaylistDetailScreen(
                             playlistId = playlistId,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            onSongClick = {
+                                navController.navigate("now_playing") {
+                                    popUpTo("library") { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
                         )
                     }
 

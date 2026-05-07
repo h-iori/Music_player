@@ -103,6 +103,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 600.dp)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -146,7 +147,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 VisualizerView(isPlaying = isPlaying, barCount = 40, modifier = Modifier.fillMaxWidth().fillMaxHeight())
             }
 
-            Spacer(Modifier.weight(1f)) // Push everything below to the bottom
+            Spacer(Modifier.height(32.dp))
 
             Spacer(Modifier.height(20.dp))
 
@@ -166,9 +167,9 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                     color = CoreWhite,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Start,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                     modifier = Modifier
                         .weight(1f)
                         .basicMarquee(iterations = Int.MAX_VALUE)
@@ -215,7 +216,7 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 currentSong?.artist ?: "Choose a song from Library",
                 color = TextSecondary,
                 fontSize = 14.sp,
-                textAlign = TextAlign.Start,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer { alpha = controlsAlpha.value }
@@ -376,8 +377,9 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                     Text(
                         "Normal",
                         color = normalColor,
-                        fontSize = 13.sp,
-                        fontWeight = if (isNormal) FontWeight.Bold else FontWeight.Medium
+                        fontSize = 12.sp,
+                        fontWeight = if (isNormal) FontWeight.ExtraBold else FontWeight.Bold,
+                        letterSpacing = 1.sp
                     )
                 }
 
