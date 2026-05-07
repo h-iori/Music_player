@@ -9,13 +9,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.audiofx.LoudnessEnhancer
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.VectorDrawable
 import android.media.MediaPlayer
+import android.os.Handler
+import android.os.Looper
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -63,6 +67,15 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private var shouldResumeOnFocusGain = false
     private var noisyReceiverRegistered = false
 
+    // --- Bug 1 fix: delayed resume job to avoid clashing with other app's audio teardown ---
+    private var focusResumeJob: Job? = null
+
+    // --- Bug 2 fix: LoudnessEnhancer for true 100-200% volume boost ---
+    private var loudnessEnhancer: LoudnessEnhancer? = null
+    // Guard flag to prevent ContentObserver feedback loop when we set system volume ourselves
+    private var isSettingSystemVolume = false
+    private var volumeObserver: ContentObserver? = null
+
     private val becomingNoisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) pausePlayback()
@@ -89,6 +102,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             isActive = true
         }
         createNotificationChannel()
+        registerVolumeObserver()
         restoreState()
 
         scope.launch {
@@ -139,29 +153,62 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     override fun onDestroy() {
         persistState()
         progressJob?.cancel()
+        focusResumeJob?.cancel()
         unregisterNoisyReceiver()
+        unregisterVolumeObserver()
         releaseWakeLock()
         mediaSession.release()
+        releaseLoudnessEnhancer()
         player?.release()
         player = null
         abandonAudioFocus()
         super.onDestroy()
     }
 
+    /**
+     * BUG 1 FIX — Unified audio focus handling for both GSM and VoIP (WhatsApp) calls.
+     *
+     * PREVIOUS BEHAVIOUR (broken for WhatsApp):
+     *   - AUDIOFOCUS_LOSS_TRANSIENT → set shouldResumeOnFocusGain, pause
+     *   - AUDIOFOCUS_LOSS → clear shouldResumeOnFocusGain, STOP playback
+     *   - AUDIOFOCUS_GAIN → resume only if shouldResumeOnFocusGain was set
+     *
+     * WHY THIS FAILED FOR WHATSAPP:
+     *   WhatsApp (and other VoIP apps) request AUDIOFOCUS_GAIN (permanent focus),
+     *   so our app receives AUDIOFOCUS_LOSS (not TRANSIENT). The old code cleared
+     *   shouldResumeOnFocusGain and fully stopped the player. When WhatsApp released
+     *   focus after the call ended, AUDIOFOCUS_GAIN fired but we never resumed
+     *   because the flag was false and the player was destroyed.
+     *
+     * FIX:
+     *   - Treat ALL focus loss types the same: save whether we were playing, then pause.
+     *   - On AUDIOFOCUS_GAIN, resume after a 500ms delay (allows the interrupting app
+     *     to fully tear down its audio session, preventing clashes).
+     *   - Re-apply volume boost on resume since the audio pipeline may have been reset.
+     */
     override fun onAudioFocusChange(focusChange: Int) {
         when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Cancel any pending resume from a previous focus-gain
+                focusResumeJob?.cancel()
                 shouldResumeOnFocusGain = _state.value.isPlaying
                 pausePlayback()
             }
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                shouldResumeOnFocusGain = false
-                stopPlayback(stopService = false)
-            }
             AudioManager.AUDIOFOCUS_GAIN -> {
-                if (shouldResumeOnFocusGain) resumePlayback()
-                shouldResumeOnFocusGain = false
+                // Delay resume to avoid clashing with the other app's audio teardown.
+                // This is especially important for WhatsApp which may still be releasing
+                // its audio session when we receive AUDIOFOCUS_GAIN.
+                focusResumeJob?.cancel()
+                focusResumeJob = scope.launch {
+                    delay(500L)
+                    if (shouldResumeOnFocusGain) {
+                        applyVolumeBoost() // Restore volume state after interruption
+                        resumePlayback()
+                    }
+                    shouldResumeOnFocusGain = false
+                }
             }
         }
     }
@@ -238,6 +285,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
                     error = null
                 )
                 if (startPositionSeconds > 0) seekTo((startPositionSeconds * 1000L).toInt())
+                initLoudnessEnhancer(audioSessionId)
                 applyVolumeBoost()
                 if (autoPlay && requestAudioFocus()) {
                     start()
@@ -266,6 +314,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             return
         }
         if (requestAudioFocus()) {
+            applyVolumeBoost() // Re-apply volume boost after interruption
             existing.start()
             acquireWakeLock()
             registerNoisyReceiver()
@@ -286,6 +335,8 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private fun stopPlayback(stopService: Boolean) {
         persistState()
         progressJob?.cancel()
+        focusResumeJob?.cancel()
+        releaseLoudnessEnhancer()
         player?.stopSafely()
         player?.release()
         player = null
@@ -339,9 +390,118 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         persistState()
     }
 
+    /**
+     * BUG 2 FIX — Unified volume control calibrated to system volume.
+     *
+     * PREVIOUS BEHAVIOUR (broken):
+     *   val gain = (volumePercent / 100f).coerceIn(0f, 2f)
+     *   player?.setVolume(gain, gain)
+     *
+     * WHY THIS WAS BROKEN:
+     *   MediaPlayer.setVolume() only accepts values 0.0–1.0. Values above 1.0 are
+     *   silently clamped to 1.0 by Android. So the "200% boost" feature never actually
+     *   amplified anything — 100% and 200% sounded identical. Meanwhile, the hardware
+     *   volume keys were intercepted by MainActivity.onKeyDown() which consumed the
+     *   events and only updated this internal gain, preventing the system media stream
+     *   from ever changing.
+     *
+     * FIX:
+     *   0–100%  → Maps to system STREAM_MUSIC volume (0 to max). MediaPlayer.setVolume
+     *             stays at 1.0 (no attenuation). This keeps the slider calibrated with
+     *             the actual system volume — if the system is at 75%, the slider shows 75%.
+     *   100–200% → System volume stays at max. LoudnessEnhancer (standard Android audio
+     *              effect) provides real amplification: 0 mB at 100%, up to +600 mB (~2×
+     *              amplitude / +6 dB) at 200%.
+     */
     private fun applyVolumeBoost() {
-        val gain = (_state.value.volumePercent / 100f).coerceIn(0f, 2f)
-        player?.setVolume(gain, gain)
+        val volumePercent = _state.value.volumePercent
+        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+
+        if (volumePercent <= 100f) {
+            // 0–100%: Set system media volume proportionally. No LoudnessEnhancer boost.
+            val targetVol = ((volumePercent / 100f) * maxVol).toInt().coerceIn(0, maxVol)
+            isSettingSystemVolume = true
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+            isSettingSystemVolume = false
+            player?.setVolume(1f, 1f) // No attenuation — let system volume control level
+            loudnessEnhancer?.setTargetGain(0) // No boost
+        } else {
+            // 100–200%: System volume at max + LoudnessEnhancer for real amplification.
+            isSettingSystemVolume = true
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
+            isSettingSystemVolume = false
+            player?.setVolume(1f, 1f)
+            // Map 100–200% linearly to 0–600 mB (+6 dB ≈ 2× amplitude at 200%)
+            val boostFraction = (volumePercent - 100f) / 100f // 0.0 to 1.0
+            val boostMb = (boostFraction * 600f).toInt()      // 0 to 600 mB
+            loudnessEnhancer?.setTargetGain(boostMb)
+        }
+    }
+
+    /** Initialize LoudnessEnhancer for the current audio session. */
+    private fun initLoudnessEnhancer(audioSessionId: Int) {
+        releaseLoudnessEnhancer()
+        if (audioSessionId == 0) return
+        try {
+            loudnessEnhancer = LoudnessEnhancer(audioSessionId).apply { enabled = true }
+        } catch (_: Exception) {
+            // Some devices may not support LoudnessEnhancer; fall back to no boost.
+            loudnessEnhancer = null
+        }
+    }
+
+    private fun releaseLoudnessEnhancer() {
+        runCatching { loudnessEnhancer?.release() }
+        loudnessEnhancer = null
+    }
+
+    /**
+     * Observe system STREAM_MUSIC volume changes (from hardware keys, quick-settings, etc.)
+     * and sync the in-app slider to match. This keeps the UI calibrated with the real
+     * system volume at all times.
+     */
+    private fun registerVolumeObserver() {
+        volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                syncVolumeFromSystem()
+            }
+        }
+        contentResolver.registerContentObserver(
+            Settings.System.CONTENT_URI, true, volumeObserver!!
+        )
+    }
+
+    private fun unregisterVolumeObserver() {
+        volumeObserver?.let { contentResolver.unregisterContentObserver(it) }
+        volumeObserver = null
+    }
+
+    /**
+     * Read the current system STREAM_MUSIC volume and update the internal state to match.
+     * If the user had a LoudnessEnhancer boost active and changes system volume externally,
+     * we reset the boost — the user is taking manual control via hardware keys.
+     */
+    private fun syncVolumeFromSystem() {
+        if (isSettingSystemVolume) return // We caused this change ourselves; ignore.
+        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (maxVol == 0) return
+        val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val systemPercent = (curVol.toFloat() / maxVol.toFloat()) * 100f
+
+        // When system volume changes externally, reset any boost and sync slider.
+        val newVolumePercent = systemPercent.coerceIn(0f, 100f)
+        if (kotlin.math.abs(newVolumePercent - _state.value.volumePercent) > 0.5f) {
+            loudnessEnhancer?.setTargetGain(0) // Reset boost
+            updateState(volume = newVolumePercent)
+        }
+    }
+
+    /** Read the current system volume as a percentage (0–100). */
+    private fun readSystemVolumePercent(): Float {
+        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (maxVol == 0) return 100f
+        val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        return (curVol.toFloat() / maxVol.toFloat()) * 100f
     }
 
     private fun handleCompletion() {
@@ -608,7 +768,19 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         val queue = queueIds.mapNotNull { byId[it] }
         val mode = runCatching { PlaybackMode.valueOf(prefs.getString(KEY_MODE, PlaybackMode.NORMAL.name)!!) }
             .getOrDefault(PlaybackMode.NORMAL)
-        val volume = prefs.getFloat(KEY_VOLUME, 100f)
+
+        // BUG 2 FIX: Read current system volume for the 0-100% base.
+        // Only use the persisted value if it was > 100% (i.e., boost was active).
+        val persistedVolume = prefs.getFloat(KEY_VOLUME, 100f)
+        val volume = if (persistedVolume > 100f) {
+            // Restore the boost portion on top of current system max.
+            // The boost will be applied when playback actually starts.
+            persistedVolume
+        } else {
+            // Read the actual system volume — it's the ground truth for 0-100%.
+            readSystemVolumePercent()
+        }
+
         if (queue.isNotEmpty()) {
             updateState(
                 queue = queue,

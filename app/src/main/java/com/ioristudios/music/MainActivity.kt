@@ -2,6 +2,7 @@ package com.ioristudios.music
 
 import android.Manifest
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,14 +18,10 @@ import androidx.core.view.WindowCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-import android.view.KeyEvent
-import androidx.lifecycle.ViewModelProvider
 import com.ioristudios.music.data.repository.MusicRepository
 import com.ioristudios.music.playback.PlaybackService
-import com.ioristudios.music.ui.VolumeViewModel
 
 class MainActivity : ComponentActivity() {
-    private lateinit var volumeViewModel: VolumeViewModel
     private var isExternalIntent by androidx.compose.runtime.mutableStateOf(false)
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -34,9 +31,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        volumeViewModel = ViewModelProvider(this)[VolumeViewModel::class.java]
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // BUG 2 FIX: Ensure hardware volume keys always control the music/media stream,
+        // even when no audio is playing. Without this, keys may target the ringtone stream.
+        volumeControlStream = AudioManager.STREAM_MUSIC
+
+        // REMOVED: onKeyDown override that intercepted hardware volume keys.
+        // The old code consumed volume key events and only updated an internal gain value
+        // via MediaPlayer.setVolume(), preventing the system STREAM_MUSIC volume from ever
+        // changing. Now hardware keys work natively, and a ContentObserver in PlaybackService
+        // detects the system volume change and updates the in-app slider to match.
+
         requestRuntimePermissions()
         handleIncomingIntent(intent)
         setContent {
@@ -48,22 +55,6 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncomingIntent(intent)
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        return when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                volumeViewModel.updateVolume(5f)
-                PlaybackService.setVolume(this, volumeViewModel.volumePercent.value)
-                true
-            }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                volumeViewModel.updateVolume(-5f)
-                PlaybackService.setVolume(this, volumeViewModel.volumePercent.value)
-                true
-            }
-            else -> super.onKeyDown(keyCode, event)
-        }
     }
 
     private fun requestRuntimePermissions() {

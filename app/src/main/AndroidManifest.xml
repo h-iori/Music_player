@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- READ_PHONE_STATE removed: audio focus handles all call types (GSM + VoIP) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
@@ -70,14 +70,10 @@
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name=".playback.SystemEventReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.media.AUDIO_BECOMING_NOISY" />
-                <action android:name="android.intent.action.PHONE_STATE" />
-            </intent-filter>
-        </receiver>
+        <!-- SystemEventReceiver removed: its telephony listener only handled GSM calls
+             (not VoIP/WhatsApp), and its NOISY listener was redundant with the dynamic
+             becomingNoisyReceiver registered in PlaybackService. Audio focus now handles
+             all interruption types uniformly. -->
 
         <provider
             android:name="androidx.core.content.FileProvider"
