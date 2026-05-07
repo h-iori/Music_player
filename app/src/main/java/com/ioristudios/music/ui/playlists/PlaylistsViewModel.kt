@@ -61,6 +61,13 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun shareSelected() {
+        val selectedIds = _selectedPlaylistIds.value
+        val playlistsToShare = playlists.value.filter { it.id in selectedIds }
+        val songsToShare = playlistsToShare.flatMap { it.songs }.distinctBy { it.id }
+        
+        if (songsToShare.isNotEmpty()) {
+            com.ioristudios.music.external.ExternalSongActions.shareSongs(getApplication(), songsToShare)
+        }
         exitSelectionMode()
     }
 

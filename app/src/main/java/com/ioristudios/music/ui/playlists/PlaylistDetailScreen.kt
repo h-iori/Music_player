@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -159,9 +160,15 @@ fun PlaylistDetailScreen(
                 actions = {
                     IconButton(onClick = {
                         haptic.performClick()
+                        ExternalSongActions.shareSongs(context, songs.toList())
+                    }) {
+                        Icon(Icons.Filled.Share, "Share Playlist", tint = NeonPurple)
+                    }
+                    IconButton(onClick = {
+                        haptic.performClick()
                         showAddSongsDialog = true
                     }) {
-                        Icon(Icons.Filled.PlaylistAdd, "Add Songs", tint = NeonPurple)
+                        Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add Songs", tint = NeonPurple)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -290,10 +297,13 @@ fun PlaylistDetailScreen(
                                         selectedSongOptions = song
                                     },
                                     onClick = {
-                                        if (song.id != (playbackState.currentSong?.id ?: -1L)) {
-                                            PlaybackService.playQueue(context, songs.toList(), song)
+                                        // Only trigger click if not currently dragging
+                                        if (!isDragging && !reorderState.isAnyItemDragging) {
+                                            if (song.id != (playbackState.currentSong?.id ?: -1L)) {
+                                                PlaybackService.playQueue(context, songs.toList(), song)
+                                            }
+                                            onSongClick(song)
                                         }
-                                        onSongClick(song)
                                     },
                                     isPlaying = song.id == playbackState.currentSong?.id,
                                     modifier = modifierWithDrag

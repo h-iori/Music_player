@@ -88,13 +88,17 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
             delete("scanned_song_ids", null, null)
             
             val insertSong = compileStatement(
-                "INSERT OR REPLACE INTO songs (id, title, artist, album, duration_sec, album_art_uri, content_uri, file_path, file_size, date_added, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT OR IGNORE INTO songs (id, title, artist, album, duration_sec, album_art_uri, content_uri, file_path, file_size, date_added, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            )
+            val updateSong = compileStatement(
+                "UPDATE songs SET title = ?, artist = ?, album = ?, duration_sec = ?, album_art_uri = ?, content_uri = ?, file_path = ?, file_size = ?, date_added = ?, mime_type = ? WHERE id = ?"
             )
             val insertScannedId = compileStatement(
                 "INSERT OR REPLACE INTO scanned_song_ids (id) VALUES (?)"
             )
             
             songs.forEach { song ->
+                // 1. Insert or Ignore to ensure ID exists without deleting
                 insertSong.bindLong(1, song.id)
                 insertSong.bindString(2, song.title)
                 insertSong.bindString(3, song.artist)
@@ -107,6 +111,20 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 insertSong.bindLong(10, song.dateAdded)
                 insertSong.bindString(11, song.mimeType)
                 insertSong.executeInsert()
+
+                // 2. Update to ensure metadata is fresh
+                updateSong.bindString(1, song.title)
+                updateSong.bindString(2, song.artist)
+                updateSong.bindString(3, song.album)
+                updateSong.bindLong(4, song.duration)
+                if (song.albumArt != null) updateSong.bindString(5, song.albumArt) else updateSong.bindNull(5)
+                updateSong.bindString(6, song.contentUri)
+                if (song.filePath != null) updateSong.bindString(7, song.filePath) else updateSong.bindNull(7)
+                updateSong.bindLong(8, song.fileSize)
+                updateSong.bindLong(9, song.dateAdded)
+                updateSong.bindString(10, song.mimeType)
+                updateSong.bindLong(11, song.id)
+                updateSong.executeUpdateDelete()
                 
                 insertScannedId.bindLong(1, song.id)
                 insertScannedId.executeInsert()
