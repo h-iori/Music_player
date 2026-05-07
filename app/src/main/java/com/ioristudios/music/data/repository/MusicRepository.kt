@@ -65,7 +65,7 @@ class MusicRepository private constructor(context: Context) {
             val scanned = queryAudio(appContext.contentResolver)
             database.replaceSongs(scanned)
             val byId = scanned.associateBy { it.id }
-            _songs.value = scanned.sortedBy { it.title.lowercase() }
+            _songs.value = scanned.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
             _playlists.value = database.getPlaylists(byId)
             _history.value = database.getHistory(byId)
         }

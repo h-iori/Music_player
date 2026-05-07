@@ -86,11 +86,32 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
         writableDatabase.transaction {
             execSQL("CREATE TEMP TABLE IF NOT EXISTS scanned_song_ids (id INTEGER PRIMARY KEY)")
             delete("scanned_song_ids", null, null)
+            
+            val insertSong = compileStatement(
+                "INSERT OR REPLACE INTO songs (id, title, artist, album, duration_sec, album_art_uri, content_uri, file_path, file_size, date_added, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            )
+            val insertScannedId = compileStatement(
+                "INSERT OR REPLACE INTO scanned_song_ids (id) VALUES (?)"
+            )
+            
             songs.forEach { song ->
-                insertWithOnConflict("songs", null, song.toValues(), SQLiteDatabase.CONFLICT_REPLACE)
-                val values = ContentValues().apply { put("id", song.id) }
-                insertWithOnConflict("scanned_song_ids", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                insertSong.bindLong(1, song.id)
+                insertSong.bindString(2, song.title)
+                insertSong.bindString(3, song.artist)
+                insertSong.bindString(4, song.album)
+                insertSong.bindLong(5, song.duration)
+                if (song.albumArt != null) insertSong.bindString(6, song.albumArt) else insertSong.bindNull(6)
+                insertSong.bindString(7, song.contentUri)
+                if (song.filePath != null) insertSong.bindString(8, song.filePath) else insertSong.bindNull(8)
+                insertSong.bindLong(9, song.fileSize)
+                insertSong.bindLong(10, song.dateAdded)
+                insertSong.bindString(11, song.mimeType)
+                insertSong.executeInsert()
+                
+                insertScannedId.bindLong(1, song.id)
+                insertScannedId.executeInsert()
             }
+            
             delete("songs", "id NOT IN (SELECT id FROM scanned_song_ids)", null)
             delete("scanned_song_ids", null, null)
         }

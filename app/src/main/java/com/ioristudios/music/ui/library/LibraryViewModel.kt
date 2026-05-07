@@ -12,9 +12,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MusicRepository.getInstance(application)
@@ -58,10 +60,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         when (mode) {
-            SortMode.AZ -> filtered.sortedBy { it.title.lowercase() }
+            SortMode.AZ -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
             SortMode.BY_TIME -> filtered.sortedBy { it.duration }
         }
-    }.stateIn(
+    }.flowOn(Dispatchers.Default)
+    .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
