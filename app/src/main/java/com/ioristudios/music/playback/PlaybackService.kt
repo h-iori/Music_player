@@ -517,10 +517,14 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         progressJob = scope.launch {
             while (isActive) {
                 player?.let {
-                    updateState(
-                        position = (it.currentPosition / 1000L).coerceAtLeast(0L),
-                        duration = (it.duration / 1000L).coerceAtLeast(_state.value.durationSeconds)
-                    )
+                    val newPos = (it.currentPosition / 1000L).coerceAtLeast(0L)
+                    val newDur = (it.duration / 1000L).coerceAtLeast(_state.value.durationSeconds)
+                    val current = _state.value
+                    // Only emit when values actually changed — avoids allocating a new
+                    // PlaybackState copy and triggering downstream recomposition for nothing.
+                    if (newPos != current.positionSeconds || newDur != current.durationSeconds) {
+                        updateState(position = newPos, duration = newDur)
+                    }
                 }
                 delay(500L)
             }

@@ -22,10 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,7 +59,7 @@ data class NavItem(
 val bottomNavItems = listOf(
     NavItem("Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic, "library"),
     NavItem("Now Playing", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircle, "now_playing"),
-    NavItem("Playlists", Icons.Filled.QueueMusic, Icons.Outlined.QueueMusic, "playlists")
+    NavItem("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Icons.AutoMirrored.Outlined.QueueMusic, "playlists")
 )
 
 @Composable
@@ -114,7 +114,7 @@ fun BottomNavBar(
         ) {
             bottomNavItems.forEach { item ->
                 val isSelected = currentRoute == item.route
-                val interactionSource = remember { MutableInteractionSource() }
+                val interactionSource = remember(item.route) { MutableInteractionSource() }
                 val iconColor by animateColorAsState(
                     targetValue = if (isSelected) NeonPurple else TextMuted,
                     animationSpec = tween(300),

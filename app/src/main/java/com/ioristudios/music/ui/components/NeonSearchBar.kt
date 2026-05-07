@@ -82,7 +82,6 @@ fun NeonSearchBar(
             .background(SurfaceDarkCard, shape)
             .border(1.dp, borderColor, shape)
             .height(52.dp)
-            .animateContentSize()
     ) {
         Row(
             modifier = Modifier

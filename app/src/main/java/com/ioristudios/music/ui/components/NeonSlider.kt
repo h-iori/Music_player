@@ -28,6 +28,7 @@ fun NeonSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    onValueChangeFinished: (() -> Unit)? = null,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     enabled: Boolean = true
 ) {
@@ -54,6 +55,7 @@ fun NeonSlider(
         Slider(
             value = value,
             onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
             valueRange = valueRange,
             enabled = enabled,
             interactionSource = interactionSource,

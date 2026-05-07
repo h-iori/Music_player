@@ -74,12 +74,21 @@ class MusicRepository private constructor(context: Context) {
     fun observeMediaStore() {
         if (observer != null) return
         observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            private var debounceJob: kotlinx.coroutines.Job? = null
+
             override fun onChange(selfChange: Boolean) {
-                scanDevice()
+                // Debounce rapid MediaStore changes — e.g. file manager bulk copy
+                // fires dozens of onChange events. Without this, each one triggers
+                // a full MediaStore query + SQLite write + UI recomposition cascade.
+                debounceJob?.cancel()
+                debounceJob = scope.launch {
+                    kotlinx.coroutines.delay(500L)
+                    scanDevice()
+                }
             }
 
             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                scanDevice()
+                onChange(selfChange)
             }
         }
         appContext.contentResolver.registerContentObserver(

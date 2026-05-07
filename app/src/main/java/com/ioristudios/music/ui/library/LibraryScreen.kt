@@ -425,7 +425,7 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                itemsIndexed(filteredSongs, key = { _, song -> song.id }) { index, song ->
+                itemsIndexed(filteredSongs, key = { _, song -> song.id }, contentType = { _, _ -> "song" }) { index, song ->
                     SongRow(
                         song = song,
                         index = index,

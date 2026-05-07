@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -208,10 +208,16 @@ private fun PlaylistCard(
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
 
-    // Entrance animation
+    // Entrance animation — runs once per item, not on every scroll recycle
+    var hasAnimated by remember(playlist.id) { mutableStateOf(false) }
     val animatedProgress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        animatedProgress.animateTo(1f, tween(300))
+    LaunchedEffect(playlist.id) {
+        if (!hasAnimated) {
+            animatedProgress.animateTo(1f, tween(300))
+            hasAnimated = true
+        } else {
+            animatedProgress.snapTo(1f)
+        }
     }
 
     Row(
@@ -259,7 +265,7 @@ private fun PlaylistCard(
             modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(NeonPurpleFaint),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.QueueMusic, null, tint = NeonPurple, modifier = Modifier.size(26.dp))
+            Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = NeonPurple, modifier = Modifier.size(26.dp))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(playlist.name, color = CoreWhiteDim, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

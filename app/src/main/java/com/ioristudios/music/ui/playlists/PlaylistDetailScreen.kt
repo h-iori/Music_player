@@ -51,6 +51,8 @@ import com.ioristudios.music.ui.components.SongOptionsSheet
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -69,7 +71,12 @@ fun PlaylistDetailScreen(
     val repository = remember(context) { MusicRepository.getInstance(context) }
     val playlists by repository.playlists.collectAsState()
     val allSongs by repository.songs.collectAsState()
-    val playbackState by PlaybackService.state.collectAsState()
+    // Only observe the current song ID — NOT the full playback state.
+    // This prevents the entire screen from recomposing on every position tick.
+    val initialSongId = remember { PlaybackService.state.value.currentSong?.id }
+    val currentSongId by remember {
+        PlaybackService.state.map { it.currentSong?.id }.distinctUntilChanged()
+    }.collectAsState(initial = initialSongId)
     val playlist = playlists.find { it.id == playlistId }
     if (playlist == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -299,13 +306,13 @@ fun PlaylistDetailScreen(
                                     onClick = {
                                         // Only trigger click if not currently dragging
                                         if (!isDragging && !reorderState.isAnyItemDragging) {
-                                            if (song.id != (playbackState.currentSong?.id ?: -1L)) {
+                                            if (song.id != (currentSongId ?: -1L)) {
                                                 PlaybackService.playQueue(context, songs.toList(), song)
                                             }
                                             onSongClick(song)
                                         }
                                     },
-                                    isPlaying = song.id == playbackState.currentSong?.id,
+                                    isPlaying = song.id == currentSongId,
                                     modifier = modifierWithDrag
                                         .graphicsLayer {
                                             scaleX = dragScale
@@ -445,11 +452,17 @@ private fun PlaylistSongRow(
 ) {
     val haptic = rememberHapticFeedback()
 
-    // Staggered Entrance Animation — optimized for enterprise performance
+    // Staggered Entrance Animation — runs once per item, not on every scroll recycle.
+    var hasAnimated by remember(song.id) { mutableStateOf(false) }
     val animatedProgress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(index.coerceAtMost(12) * 30L)
-        animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+    LaunchedEffect(song.id) {
+        if (!hasAnimated) {
+            delay(index.coerceAtMost(12) * 30L)
+            animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+            hasAnimated = true
+        } else {
+            animatedProgress.snapTo(1f)
+        }
     }
 
     val bgColor = when {

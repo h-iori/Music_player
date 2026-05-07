@@ -25,6 +25,7 @@ import com.ioristudios.music.ui.theme.NeonPurpleDark
 import com.ioristudios.music.ui.theme.NeonPurpleGlow
 import com.ioristudios.music.ui.theme.CoreWhite
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import kotlin.math.sin
 import kotlin.math.PI
 
@@ -38,13 +39,14 @@ fun VisualizerView(
 
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            var lastTime = System.currentTimeMillis()
+            // withInfiniteAnimationFrameMillis hooks into Choreographer's vsync callback,
+            // running at exactly the display refresh rate (60/90/120 Hz) with zero drift.
+            // Unlike delay(16), this never skips or double-fires frames.
+            val startMs = withInfiniteAnimationFrameMillis { it }
             while (true) {
-                val currentTime = System.currentTimeMillis()
-                val delta = currentTime - lastTime
-                lastTime = currentTime
-                time += delta / 1000f
-                kotlinx.coroutines.delay(16)
+                withInfiniteAnimationFrameMillis { frameMs ->
+                    time = (frameMs - startMs) / 1000f
+                }
             }
         }
     }

@@ -26,7 +26,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,13 +67,19 @@ fun SongRow(
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
 
-    // Staggered Entrance Animation — optimized for enterprise performance
+    // Staggered Entrance Animation — runs once per item, not on every scroll recycle.
+    // Without this guard, fast scrolling launches a burst of coroutines that compete
+    // with the scroll for frame time, causing visible stutter.
+    var hasAnimated by remember(song.id) { mutableStateOf(false) }
     val animatedProgress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        // Stagger the start time based on index to prevent "frame jams" on navigation
-        // We cap the stagger at 12 items to ensure items further down don't wait too long
-        delay(index.coerceAtMost(12) * 30L)
-        animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+    LaunchedEffect(song.id) {
+        if (!hasAnimated) {
+            delay(index.coerceAtMost(12) * 30L)
+            animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+            hasAnimated = true
+        } else {
+            animatedProgress.snapTo(1f)
+        }
     }
 
     Row(

@@ -32,6 +32,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -70,15 +72,48 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
     val haptic = rememberHapticFeedback()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val playbackState by PlaybackService.state.collectAsState()
-    val currentSong = playbackState.currentSong
-    val isPlaying = playbackState.isPlaying
-    val seekPosition = remember(playbackState.positionSeconds, playbackState.durationSeconds) {
-        if (playbackState.durationSeconds > 0) {
-            playbackState.positionSeconds.toFloat() / playbackState.durationSeconds.toFloat()
+
+    // --- GRANULAR STATE OBSERVATION ---
+    // Decompose PlaybackService.state into individual flows so that a position tick
+    // does NOT recompose transport controls, mode toggles, or the visualizer.
+    // Snapshot initial state once — reading .value outside remember avoids the
+    // StateFlowValueCalledInComposition lint error.
+    val initialState = remember { PlaybackService.state.value }
+
+    val currentSong by remember {
+        PlaybackService.state.map { it.currentSong }.distinctUntilChanged()
+    }.collectAsState(initial = initialState.currentSong)
+
+    val isPlaying by remember {
+        PlaybackService.state.map { it.isPlaying }.distinctUntilChanged()
+    }.collectAsState(initial = initialState.isPlaying)
+
+    val playbackMode by remember {
+        PlaybackService.state.map { it.mode }.distinctUntilChanged()
+    }.collectAsState(initial = initialState.mode)
+
+    val positionSeconds by remember {
+        PlaybackService.state.map { it.positionSeconds }.distinctUntilChanged()
+    }.collectAsState(initial = initialState.positionSeconds)
+
+    val durationSeconds by remember {
+        PlaybackService.state.map { it.durationSeconds }.distinctUntilChanged()
+    }.collectAsState(initial = initialState.durationSeconds)
+
+    // --- SEEKBAR LOCAL STATE ---
+    // When the user is dragging, we show their finger position (local state),
+    // NOT the service's position. This prevents IPC-on-every-pixel and rubber-banding.
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekDragValue by remember { mutableFloatStateOf(0f) }
+
+    val seekPosition = if (isSeeking) {
+        seekDragValue
+    } else {
+        if (durationSeconds > 0) {
+            (positionSeconds.toFloat() / durationSeconds.toFloat()).coerceIn(0f, 1f)
         } else 0f
-    }.coerceIn(0f, 1f)
-    val playbackMode = playbackState.mode
+    }
+
     var isFavorite by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
     var lastSeekDecile by remember { mutableIntStateOf((seekPosition * 10).toInt()) }
@@ -101,14 +136,13 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
         pendingTitleUpdate = null
     }
 
-    val currentTime = remember(playbackState.positionSeconds) {
-        val totalSeconds = playbackState.positionSeconds
-        "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+    val currentTime = remember(positionSeconds) {
+        val totalSecs = if (isSeeking) (durationSeconds * seekDragValue).toLong() else positionSeconds
+        "%d:%02d".format(totalSecs / 60, totalSecs % 60)
     }
 
-    val totalDuration = remember(playbackState.durationSeconds) {
-        val totalSeconds = playbackState.durationSeconds
-        "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+    val totalDuration = remember(durationSeconds) {
+        "%d:%02d".format(durationSeconds / 60, durationSeconds % 60)
     }
 
 
@@ -262,13 +296,21 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 NeonSlider(
                     value = seekPosition,
                     onValueChange = { newValue ->
+                        // During drag: update LOCAL state only — no IPC, no Intent,
+                        // no service round-trip. This is what makes the slider buttery.
+                        isSeeking = true
+                        seekDragValue = newValue
                         val newDecile = (newValue * 10).toInt()
                         if (newDecile != lastSeekDecile) {
                             haptic.performSelection()
                             lastSeekDecile = newDecile
                         }
-                        val target = (playbackState.durationSeconds * newValue).toLong()
+                    },
+                    onValueChangeFinished = {
+                        // On finger lift: send ONE seek Intent to the service.
+                        val target = (durationSeconds * seekDragValue).toLong()
                         PlaybackService.seek(context, target)
+                        isSeeking = false
                     }
                 )
                 Spacer(Modifier.height(4.dp))
@@ -438,25 +480,26 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
     }
 
     // Options sheet overlay
-    if (showOptions && currentSong != null) {
+    val song = currentSong
+    if (showOptions && song != null) {
         SongOptionsSheet(
-            song = currentSong,
+            song = song,
             onDismiss = { showOptions = false },
-            onShare = { ExternalSongActions.shareSong(context, currentSong) },
+            onShare = { ExternalSongActions.shareSong(context, song) },
             onTrimAndSetRingtone = { start, end ->
                 scope.launch {
-                    val result = ExternalSongActions.trimAndSetRingtone(context, currentSong, start, end)
+                    val result = ExternalSongActions.trimAndSetRingtone(context, song, start, end)
                     Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
                 }
             },
             onEditName = { newTitle ->
-                val result = ExternalSongActions.updateSongTitle(context, currentSong, newTitle)
+                val result = ExternalSongActions.updateSongTitle(context, song, newTitle)
                 when (result) {
                     SongEditResult.Success -> {
                         Toast.makeText(context, "Title updated", Toast.LENGTH_SHORT).show()
                     }
                     is SongEditResult.RequiresPermission -> {
-                        pendingTitleUpdate = currentSong to newTitle
+                        pendingTitleUpdate = song to newTitle
                         editPermissionLauncher.launch(
                             IntentSenderRequest.Builder(result.intent.intentSender).build()
                         )

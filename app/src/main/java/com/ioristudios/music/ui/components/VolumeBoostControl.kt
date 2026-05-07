@@ -12,7 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -60,7 +60,7 @@ fun VolumeBoostControl(
                     .border(1.dp, if (isExpanded) NeonPurpleSubtle else NeonPurpleFaint, RoundedCornerShape(12.dp))
             ) {
                 Icon(
-                    imageVector = Icons.Filled.VolumeUp,
+                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                     contentDescription = "Volume Boost",
                     tint = if (isExpanded) NeonPurple else TextSecondary,
                     modifier = Modifier.size(22.dp)
@@ -91,7 +91,7 @@ fun VolumeBoostControl(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Filled.VolumeUp, null, tint = NeonPurple, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, null, tint = NeonPurple, modifier = Modifier.size(16.dp))
                         Text(
                             text = "Volume Boost",
                             color = CoreWhiteDim,
