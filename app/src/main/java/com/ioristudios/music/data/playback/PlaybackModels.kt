@@ -24,6 +24,8 @@ data class PlaybackState(
     val durationSeconds: Long = 0L,
     val status: PlaybackStatus = PlaybackStatus.IDLE,
     val mode: PlaybackMode = PlaybackMode.NORMAL,
+    val shuffleIndices: List<Int> = emptyList(),
+    val shufflePosition: Int = -1,
     val volumePercent: Float = 100f,
     val audioSessionId: Int = 0,
     val errorMessage: String? = null

@@ -103,18 +103,21 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         }
         createNotificationChannel()
         registerVolumeObserver()
-        restoreState()
 
         scope.launch {
+            var isFirstCollection = true
             repository.songs.collect { songs ->
                 val state = _state.value
-                if (state.queue.isEmpty()) return@collect
-                
                 val byId = songs.associateBy { it.id }
-                val newQueue = state.queue.map { song -> byId[song.id] ?: song }
-                
-                if (newQueue != state.queue) {
-                    updateState(queue = newQueue)
+
+                if (isFirstCollection && state.queue.isEmpty()) {
+                    isFirstCollection = false
+                    restoreState(songs)
+                } else if (state.queue.isNotEmpty()) {
+                    val newQueue = state.queue.map { song -> byId[song.id] ?: song }
+                    if (newQueue != state.queue) {
+                        updateState(queue = newQueue)
+                    }
                 }
             }
         }
@@ -148,6 +151,13 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_BACKGROUND) {
+            persistState()
+        }
     }
 
     override fun onDestroy() {
@@ -245,7 +255,20 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
 
     private fun setQueueAndPlay(queue: List<Song>, index: Int, startPositionSeconds: Long = 0L) {
         if (queue.isEmpty()) return
-        updateState(queue = queue, queueIndex = index.coerceIn(queue.indices), position = startPositionSeconds, status = PlaybackStatus.LOADING)
+        val state = _state.value
+        val (shuffleIndices, shufflePos) = if (state.mode == PlaybackMode.SHUFFLE) {
+            generateShuffleIndices(queue.size, index)
+        } else {
+            emptyList<Int>() to -1
+        }
+        updateState(
+            queue = queue,
+            queueIndex = index.coerceIn(queue.indices),
+            shuffleIndices = shuffleIndices,
+            shufflePosition = shufflePos,
+            position = startPositionSeconds,
+            status = PlaybackStatus.LOADING
+        )
         prepareCurrent(startPositionSeconds, autoPlay = true)
     }
 
@@ -362,25 +385,82 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private fun skipNext() {
         val state = _state.value
         if (state.queue.isEmpty()) return
-        val nextIndex = when (state.mode) {
-            PlaybackMode.SHUFFLE -> Random.nextInt(state.queue.size)
-            PlaybackMode.REPEAT -> state.queueIndex
-            PlaybackMode.NORMAL -> if (state.queueIndex + 1 < state.queue.size) state.queueIndex + 1 else 0
+        
+        var nextIndex = state.queueIndex
+        var nextShufflePos = state.shufflePosition
+
+        when (state.mode) {
+            PlaybackMode.SHUFFLE -> {
+                val currentIndices = state.shuffleIndices
+                nextShufflePos++
+                if (nextShufflePos >= currentIndices.size || nextShufflePos < 0) {
+                    // Reshuffle when we reach the end
+                    val (newIndices, newPos) = generateShuffleIndices(state.queue.size, state.queueIndex)
+                    // If we just reshuffled, the first one is the current song, so we skip to the second one
+                    nextShufflePos = if (newIndices.size > 1) 1 else 0
+                    val targetIndex = newIndices.getOrNull(nextShufflePos) ?: 0
+                    updateState(
+                        queueIndex = targetIndex,
+                        shuffleIndices = newIndices,
+                        shufflePosition = nextShufflePos,
+                        position = 0L,
+                        status = PlaybackStatus.LOADING
+                    )
+                } else {
+                    nextIndex = currentIndices[nextShufflePos]
+                    updateState(queueIndex = nextIndex, shufflePosition = nextShufflePos, position = 0L, status = PlaybackStatus.LOADING)
+                }
+            }
+            PlaybackMode.REPEAT -> {
+                // Keep same index
+            }
+            PlaybackMode.NORMAL -> {
+                nextIndex = if (state.queueIndex + 1 < state.queue.size) state.queueIndex + 1 else 0
+                updateState(queueIndex = nextIndex, position = 0L, status = PlaybackStatus.LOADING)
+            }
         }
-        updateState(queueIndex = nextIndex, position = 0L, status = PlaybackStatus.LOADING)
         prepareCurrent(autoPlay = true)
     }
 
     private fun skipPrevious() {
         val state = _state.value
         if (state.queue.isEmpty()) return
-        val previousIndex = if (state.queueIndex - 1 >= 0) state.queueIndex - 1 else state.queue.lastIndex
-        updateState(queueIndex = previousIndex, position = 0L, status = PlaybackStatus.LOADING)
+
+        var prevIndex = state.queueIndex
+        var prevShufflePos = state.shufflePosition
+
+        when (state.mode) {
+            PlaybackMode.SHUFFLE -> {
+                val currentIndices = state.shuffleIndices
+                if (currentIndices.isEmpty()) {
+                    val (newIndices, newPos) = generateShuffleIndices(state.queue.size, state.queueIndex)
+                    updateState(shuffleIndices = newIndices, shufflePosition = newPos)
+                    // Fallback to normal previous if shuffle sequence was empty for some reason
+                    prevIndex = if (state.queueIndex - 1 >= 0) state.queueIndex - 1 else state.queue.lastIndex
+                    updateState(queueIndex = prevIndex, position = 0L, status = PlaybackStatus.LOADING)
+                } else {
+                    prevShufflePos--
+                    if (prevShufflePos < 0) prevShufflePos = currentIndices.lastIndex
+                    prevIndex = currentIndices[prevShufflePos]
+                    updateState(queueIndex = prevIndex, shufflePosition = prevShufflePos, position = 0L, status = PlaybackStatus.LOADING)
+                }
+            }
+            else -> {
+                prevIndex = if (state.queueIndex - 1 >= 0) state.queueIndex - 1 else state.queue.lastIndex
+                updateState(queueIndex = prevIndex, position = 0L, status = PlaybackStatus.LOADING)
+            }
+        }
         prepareCurrent(autoPlay = true)
     }
 
     private fun setMode(mode: PlaybackMode) {
-        updateState(mode = mode)
+        val state = _state.value
+        if (mode == PlaybackMode.SHUFFLE && state.mode != PlaybackMode.SHUFFLE) {
+            val (indices, pos) = generateShuffleIndices(state.queue.size, state.queueIndex)
+            updateState(mode = mode, shuffleIndices = indices, shufflePosition = pos)
+        } else {
+            updateState(mode = mode)
+        }
         persistState()
     }
 
@@ -594,6 +674,8 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         duration: Long = _state.value.durationSeconds,
         status: PlaybackStatus = _state.value.status,
         mode: PlaybackMode = _state.value.mode,
+        shuffleIndices: List<Int> = _state.value.shuffleIndices,
+        shufflePosition: Int = _state.value.shufflePosition,
         volume: Float = _state.value.volumePercent,
         audioSessionId: Int = _state.value.audioSessionId,
         error: String? = _state.value.errorMessage
@@ -601,6 +683,8 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         val boundedIndex = if (queue.isEmpty()) -1 else queueIndex.coerceIn(queue.indices)
         val oldSong = _state.value.currentSong
         val newSong = queue.getOrNull(boundedIndex)
+        val oldStatus = _state.value.status
+        
         _state.value = com.ioristudios.music.data.playback.PlaybackState(
             currentSong = newSong,
             queue = queue,
@@ -609,15 +693,35 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             durationSeconds = duration.takeIf { it > 0 } ?: newSong?.duration ?: 0L,
             status = status,
             mode = mode,
+            shuffleIndices = shuffleIndices,
+            shufflePosition = shufflePosition,
             volumePercent = volume,
             audioSessionId = audioSessionId,
             errorMessage = error
         )
+
+        // Proactively persist state when critical values change
+        if (oldSong?.id != newSong?.id || oldStatus != status || mode != _state.value.mode) {
+            persistState()
+        }
+
         if (oldSong?.id != newSong?.id) {
             loadAlbumArt(newSong)
         } else {
             updateMediaSession()
         }
+    }
+
+    private fun generateShuffleIndices(size: Int, currentIndex: Int): Pair<List<Int>, Int> {
+        if (size <= 0) return emptyList<Int>() to -1
+        val indices = (0 until size).toMutableList()
+        indices.remove(currentIndex)
+        indices.shuffle()
+        if (currentIndex in 0 until size) {
+            indices.add(0, currentIndex)
+            return indices to 0
+        }
+        return indices to 0
     }
 
     private fun loadAlbumArt(song: Song?) {
@@ -758,20 +862,28 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
             .putInt(KEY_INDEX, state.queueIndex)
             .putLong(KEY_POSITION, state.positionSeconds)
             .putString(KEY_MODE, state.mode.name)
+            .putString(KEY_SHUFFLE_INDICES, state.shuffleIndices.joinToString(","))
+            .putInt(KEY_SHUFFLE_POS, state.shufflePosition)
             .putFloat(KEY_VOLUME, state.volumePercent)
             .apply()
     }
 
-    private fun restoreState() {
+    private fun restoreState(availableSongs: List<Song>) {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         val queueIds = prefs.getString(KEY_QUEUE, "")
             .orEmpty()
             .split(',')
             .mapNotNull { it.toLongOrNull() }
-        val byId = repository.songs.value.associateBy { it.id }
+        val byId = availableSongs.associateBy { it.id }
         val queue = queueIds.mapNotNull { byId[it] }
         val mode = runCatching { PlaybackMode.valueOf(prefs.getString(KEY_MODE, PlaybackMode.NORMAL.name)!!) }
             .getOrDefault(PlaybackMode.NORMAL)
+
+        val shuffleIndices = prefs.getString(KEY_SHUFFLE_INDICES, "")
+            ?.split(',')
+            ?.mapNotNull { it.toIntOrNull() }
+            .orEmpty()
+        val shufflePos = prefs.getInt(KEY_SHUFFLE_POS, -1)
 
         // BUG 2 FIX: Read current system volume for the 0-100% base.
         // Only use the persisted value if it was > 100% (i.e., boost was active).
@@ -791,6 +903,8 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
                 queueIndex = prefs.getInt(KEY_INDEX, 0),
                 position = prefs.getLong(KEY_POSITION, 0L),
                 mode = mode,
+                shuffleIndices = shuffleIndices,
+                shufflePosition = shufflePos,
                 volume = volume,
                 status = PlaybackStatus.PAUSED
             )
@@ -811,6 +925,8 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         private const val KEY_INDEX = "index"
         private const val KEY_POSITION = "position"
         private const val KEY_MODE = "mode"
+        private const val KEY_SHUFFLE_INDICES = "shuffle_indices"
+        private const val KEY_SHUFFLE_POS = "shuffle_pos"
         private const val KEY_VOLUME = "volume"
 
         private const val ACTION_PLAY_SONG = "com.ioristudios.music.action.PLAY_SONG"
