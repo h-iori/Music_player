@@ -60,8 +60,7 @@ data class NavItem(
 val bottomNavItems = listOf(
     NavItem("Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic, "library"),
     NavItem("Now Playing", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircle, "now_playing"),
-    NavItem("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Icons.AutoMirrored.Outlined.QueueMusic, "playlists"),
-    NavItem("Backup", Icons.Filled.Backup, Icons.Filled.Backup, "backup")
+    NavItem("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Icons.AutoMirrored.Outlined.QueueMusic, "playlists")
 )
 
 @Composable

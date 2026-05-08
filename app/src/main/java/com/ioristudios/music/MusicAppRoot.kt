@@ -47,7 +47,7 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
         val currentRoute = navBackStackEntry?.destination?.route ?: startDest
 
         // Determine if bottom nav should show
-        val showBottomNav = !isExternalIntent && currentRoute in listOf("library", "now_playing", "playlists", "backup")
+        val showBottomNav = !isExternalIntent && currentRoute in listOf("library", "now_playing", "playlists")
 
         // Back handler to ensure user goes to Library before exiting, or finishes activity if in external mode
         BackHandler(enabled = isExternalIntent || currentRoute != "library") {

@@ -270,16 +270,27 @@ fun FirstLaunchDrivePrompt(
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonPurple)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NeonPurple,
+                        contentColor = Color.White
+                    )
                 ) {
-                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        imageVector = Icons.Filled.Link,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White
+                    )
                     Spacer(Modifier.size(8.dp))
-                    Text("Link Drive")
+                    Text("Link Drive", color = Color.White)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.markFirstPromptSeen() }) {
-                    Text("Later", color = TextSecondary)
+                TextButton(
+                    onClick = { viewModel.markFirstPromptSeen() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = NeonPurple)
+                ) {
+                    Text("Later")
                 }
             }
         )
@@ -338,10 +349,13 @@ private fun DriveStatusCard(
             } else {
                 Button(
                     onClick = onLink,
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonPurple),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NeonPurple,
+                        contentColor = Color.White
+                    ),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Link")
+                    Text("Link", color = Color.White)
                 }
             }
         }
@@ -572,9 +586,19 @@ private fun RestoreConfirmDialog(
             Button(
                 onClick = onConfirm,
                 enabled = snapshot != null,
-                colors = ButtonDefaults.buttonColors(containerColor = NeonPurple)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NeonPurple,
+                    contentColor = Color.White
+                )
             ) {
-                Text("Restore")
+                Icon(
+                    imageVector = Icons.Filled.Restore,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = Color.White
+                )
+                Spacer(Modifier.size(8.dp))
+                Text("Restore", color = Color.White)
             }
         },
         dismissButton = {

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.time.Duration
@@ -39,6 +40,32 @@ object DriveBackupScheduler {
 
     fun cancel(context: Context) {
         WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
+    }
+
+    fun checkMissedBackup(context: Context) {
+        val preferences = DriveBackupPreferences(context)
+        if (!preferences.isAutoBackupEnabled || !preferences.isDriveLinked) return
+
+        val lastBackup = preferences.lastBackupAt
+        val now = System.currentTimeMillis()
+        val twentyFourHours = TimeUnit.DAYS.toMillis(1)
+
+        // If the last backup was more than 24 hours ago, trigger an immediate one
+        if (now - lastBackup > twentyFourHours) {
+            triggerImmediateBackup(context)
+        }
+    }
+
+    private fun triggerImmediateBackup(context: Context) {
+        val request = OneTimeWorkRequestBuilder<DriveBackupWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(context.applicationContext)
+            .enqueue(request)
     }
 
     private fun millisUntilNextMidnight(): Long {

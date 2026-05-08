@@ -12,5 +12,6 @@ class MusicApp : Application() {
         repository.observeMediaStore()
         repository.scanDevice()
         DriveBackupScheduler.sync(this)
+        DriveBackupScheduler.checkMissedBackup(this)
     }
 }
