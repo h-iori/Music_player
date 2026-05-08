@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,7 +60,8 @@ data class NavItem(
 val bottomNavItems = listOf(
     NavItem("Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic, "library"),
     NavItem("Now Playing", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircle, "now_playing"),
-    NavItem("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Icons.AutoMirrored.Outlined.QueueMusic, "playlists")
+    NavItem("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Icons.AutoMirrored.Outlined.QueueMusic, "playlists"),
+    NavItem("Backup", Icons.Filled.Backup, Icons.Filled.Backup, "backup")
 )
 
 @Composable

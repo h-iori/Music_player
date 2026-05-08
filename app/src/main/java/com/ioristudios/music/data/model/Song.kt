@@ -11,7 +11,8 @@ data class Song(
     val filePath: String? = null,
     val fileSize: Long = 0L,
     val dateAdded: Long = 0L,
-    val mimeType: String = ""
+    val mimeType: String = "",
+    val hash: String? = null
 ) {
     fun formattedDuration(): String {
         val minutes = duration / 60

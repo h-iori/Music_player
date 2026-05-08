@@ -19,9 +19,13 @@ import com.ioristudios.music.data.db.MusicDatabase
 import com.ioristudios.music.data.model.HistoryEntry
 import com.ioristudios.music.data.model.Playlist
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.external.RestoredContent
+import com.ioristudios.music.external.RestoreResult
+import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,18 +60,63 @@ class MusicRepository private constructor(context: Context) {
         }
     }
 
+    suspend fun getBackupSnapshot(): Pair<List<Song>, List<Playlist>> = withContext(Dispatchers.IO) {
+        val loadedSongs = database.getSongs()
+        val byId = loadedSongs.associateBy { it.id }
+        loadedSongs to database.getPlaylists(byId)
+    }
+
+    suspend fun importRestoredContent(content: RestoredContent): RestoreResult = withContext(Dispatchers.IO) {
+        database.importRestoredContent(content.songs, content.playlists)
+        val loadedSongs = database.getSongs()
+        val byId = loadedSongs.associateBy { it.id }
+        _songs.value = loadedSongs
+        _playlists.value = database.getPlaylists(byId)
+        RestoreResult(
+            restoredSongs = content.songs.size,
+            restoredPlaylists = content.playlists.size,
+            skippedSongs = content.skippedSongs
+        )
+    }
+
     fun scanDevice() {
         if (!hasReadAudioPermission(appContext)) {
             refreshFromDatabase()
             return
         }
         scope.launch {
-            val scanned = queryAudio(appContext.contentResolver)
+            val existing = database.getSongs().associateBy { it.id }
+            val scanned = queryAudio(appContext.contentResolver).map { song ->
+                val prev = existing[song.id]
+                if (prev != null && prev.fileSize == song.fileSize && prev.hash != null) {
+                    song.copy(hash = prev.hash)
+                } else {
+                    val hash = calculateHash(song)
+                    song.copy(hash = hash)
+                }
+            }
             database.replaceSongs(scanned)
             val byId = scanned.associateBy { it.id }
             _songs.value = scanned.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
             _playlists.value = database.getPlaylists(byId)
             _history.value = database.getHistory(byId)
+        }
+    }
+
+    private fun calculateHash(song: Song): String? {
+        val uri = song.contentUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) } ?: return null
+        return try {
+            appContext.contentResolver.openInputStream(uri)?.use { input ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    digest.update(buffer, 0, bytesRead)
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 

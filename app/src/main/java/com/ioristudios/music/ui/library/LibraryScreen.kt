@@ -67,7 +67,6 @@ import androidx.compose.ui.unit.sp
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.data.repository.MediaDeletePlan
 import com.ioristudios.music.external.ExternalSongActions
-import com.ioristudios.music.external.DriveBackupManager
 import com.ioristudios.music.external.RingtoneResult
 import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.components.NeonSearchBar
@@ -100,6 +99,7 @@ enum class SortMode(val label: String) {
 fun LibraryScreen(
     onSongClick: (Song) -> Unit = {},
     onAboutClick: () -> Unit = {},
+    onBackupClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel()
 ) {
@@ -112,11 +112,6 @@ fun LibraryScreen(
     val playlists by viewModel.playlists.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        result.data?.data?.let { uri ->
-            DriveBackupManager.writeBackup(context, uri, filteredSongs, playlists)
-        }
-    }
     
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedSongIds by viewModel.selectedSongIds.collectAsState()
@@ -522,7 +517,7 @@ fun LibraryScreen(
             isVisible = showSidebar,
             onDismiss = { showSidebar = false },
             onBackupClick = { 
-                backupLauncher.launch(DriveBackupManager.createBackupDocumentIntent())
+                onBackupClick()
                 showSidebar = false 
             },
             onAboutClick = {

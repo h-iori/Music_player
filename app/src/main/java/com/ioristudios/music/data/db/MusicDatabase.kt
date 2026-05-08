@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.ioristudios.music.data.model.HistoryEntry
 import com.ioristudios.music.data.model.Playlist
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.external.RestoredPlaylist
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -32,7 +33,8 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 file_path TEXT,
                 file_size INTEGER NOT NULL,
                 date_added INTEGER NOT NULL,
-                mime_type TEXT NOT NULL
+                mime_type TEXT NOT NULL,
+                hash TEXT
             )
             """.trimIndent()
         )
@@ -70,6 +72,7 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
         )
         db.execSQL("CREATE INDEX idx_songs_title ON songs(title)")
         db.execSQL("CREATE INDEX idx_songs_artist ON songs(artist)")
+        db.execSQL("CREATE INDEX idx_songs_hash ON songs(hash)")
         db.execSQL("CREATE INDEX idx_playlist_position ON playlist_songs(playlist_id, position)")
         db.execSQL("CREATE INDEX idx_history_played ON history(played_at DESC)")
     }
@@ -88,10 +91,10 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
             delete("scanned_song_ids", null, null)
             
             val insertSong = compileStatement(
-                "INSERT OR IGNORE INTO songs (id, title, artist, album, duration_sec, album_art_uri, content_uri, file_path, file_size, date_added, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT OR IGNORE INTO songs (id, title, artist, album, duration_sec, album_art_uri, content_uri, file_path, file_size, date_added, mime_type, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )
             val updateSong = compileStatement(
-                "UPDATE songs SET title = ?, artist = ?, album = ?, duration_sec = ?, album_art_uri = ?, content_uri = ?, file_path = ?, file_size = ?, date_added = ?, mime_type = ? WHERE id = ?"
+                "UPDATE songs SET title = ?, artist = ?, album = ?, duration_sec = ?, album_art_uri = ?, content_uri = ?, file_path = ?, file_size = ?, date_added = ?, mime_type = ?, hash = ? WHERE id = ?"
             )
             val insertScannedId = compileStatement(
                 "INSERT OR REPLACE INTO scanned_song_ids (id) VALUES (?)"
@@ -110,6 +113,7 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 insertSong.bindLong(9, song.fileSize)
                 insertSong.bindLong(10, song.dateAdded)
                 insertSong.bindString(11, song.mimeType)
+                if (song.hash != null) insertSong.bindString(12, song.hash) else insertSong.bindNull(12)
                 insertSong.executeInsert()
 
                 // 2. Update to ensure metadata is fresh
@@ -123,7 +127,8 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 updateSong.bindLong(8, song.fileSize)
                 updateSong.bindLong(9, song.dateAdded)
                 updateSong.bindString(10, song.mimeType)
-                updateSong.bindLong(11, song.id)
+                if (song.hash != null) updateSong.bindString(11, song.hash) else updateSong.bindNull(11)
+                updateSong.bindLong(12, song.id)
                 updateSong.executeUpdateDelete()
                 
                 insertScannedId.bindLong(1, song.id)
@@ -157,6 +162,18 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 delete("playlist_songs", "song_id = ?", arrayOf(songId.toString()))
                 delete("history", "song_id = ?", arrayOf(songId.toString()))
                 delete("songs", "id = ?", arrayOf(songId.toString()))
+            }
+        }
+    }
+
+    fun importRestoredContent(songs: List<Song>, playlists: List<RestoredPlaylist>) {
+        writableDatabase.transaction {
+            songs.forEach { song ->
+                insertWithOnConflict("songs", null, song.toValues(), SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            playlists.forEach { playlist ->
+                val playlistId = createUniquePlaylistLocked(playlist.name)
+                replacePlaylistOrderLocked(playlistId, playlist.songIds)
             }
         }
     }
@@ -280,6 +297,24 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
         update("playlists", modified, "id = ?", arrayOf(playlistId.toString()))
     }
 
+    private fun SQLiteDatabase.createUniquePlaylistLocked(baseName: String): Long {
+        val cleanBase = baseName.trim().ifBlank { "Restored Playlist" }
+        var candidate = cleanBase
+        var suffix = 2
+        while (true) {
+            val now = System.currentTimeMillis()
+            val values = ContentValues().apply {
+                put("name", candidate)
+                put("created_at", now)
+                put("modified_at", now)
+            }
+            val id = insertWithOnConflict("playlists", null, values, SQLiteDatabase.CONFLICT_IGNORE)
+            if (id != -1L) return id
+            candidate = "$cleanBase ($suffix)"
+            suffix += 1
+        }
+    }
+
     private fun Song.toValues() = ContentValues().apply {
         put("id", id)
         put("title", title)
@@ -292,6 +327,7 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
         put("file_size", fileSize)
         put("date_added", dateAdded)
         put("mime_type", mimeType)
+        put("hash", hash)
     }
 
     private fun Cursor.toSong() = Song(
@@ -305,7 +341,8 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
         filePath = getStringOrNull("file_path"),
         fileSize = getLong("file_size"),
         dateAdded = getLong("date_added"),
-        mimeType = getString("mime_type")
+        mimeType = getString("mime_type"),
+        hash = getStringOrNull("hash")
     )
 
     private fun <T> SQLiteDatabase.transaction(block: SQLiteDatabase.() -> T): T {
@@ -336,6 +373,6 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
 
     companion object {
         private const val DB_NAME = "music.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
     }
 }

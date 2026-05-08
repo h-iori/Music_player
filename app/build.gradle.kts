@@ -67,6 +67,10 @@ dependencies {
 
     // ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
+
+    // Google Drive authorization + scheduled backup work
+    implementation("com.google.android.gms:play-services-auth:21.5.1")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     
     // Reorderable list
     implementation("sh.calvin.reorderable:reorderable:2.3.0")

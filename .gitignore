@@ -6,3 +6,5 @@ gradle.properties
 /app/build
 /.kotlin
 /.claude-flow
+google-oauth.json
+client_secret_*.json

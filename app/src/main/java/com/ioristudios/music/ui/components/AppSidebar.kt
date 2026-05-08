@@ -95,7 +95,7 @@ fun AppSidebar(
                             index = 0,
                             visible = isVisible,
                             icon = Icons.Filled.Backup,
-                            label = "Backup Music",
+                            label = "Backup & Restore",
                             onClick = {
                                 haptic.performClick()
                                 onBackupClick()

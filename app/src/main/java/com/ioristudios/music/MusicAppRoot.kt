@@ -20,6 +20,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ioristudios.music.ui.components.BottomNavBar
+import com.ioristudios.music.ui.backup.BackupScreen
+import com.ioristudios.music.ui.backup.BackupViewModel
+import com.ioristudios.music.ui.backup.FirstLaunchDrivePrompt
 import com.ioristudios.music.ui.library.LibraryScreen
 import com.ioristudios.music.ui.nowplaying.NowPlayingScreen
 import com.ioristudios.music.ui.playlists.PlaylistDetailScreen
@@ -38,12 +41,13 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
     MusicTheme {
         val context = LocalContext.current
         val navController = rememberNavController()
+        val backupViewModel: BackupViewModel = viewModel()
         val startDest = if (isExternalIntent) "now_playing" else "library"
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route ?: startDest
 
         // Determine if bottom nav should show
-        val showBottomNav = !isExternalIntent && currentRoute in listOf("library", "now_playing", "playlists")
+        val showBottomNav = !isExternalIntent && currentRoute in listOf("library", "now_playing", "playlists", "backup")
 
         // Back handler to ensure user goes to Library before exiting, or finishes activity if in external mode
         BackHandler(enabled = isExternalIntent || currentRoute != "library") {
@@ -119,6 +123,11 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
                             },
                             onAboutClick = {
                                 navController.navigate("about")
+                            },
+                            onBackupClick = {
+                                navController.navigate("backup") {
+                                    launchSingleTop = true
+                                }
                             }
                         )
                     }
@@ -158,6 +167,13 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
                             onBack = { navController.popBackStack() }
                         )
                     }
+
+                    composable("backup") {
+                        BackupScreen(
+                            onBack = { navController.popBackStack() },
+                            viewModel = backupViewModel
+                        )
+                    }
                 }
 
                 // Global Volume Bar Overlay
@@ -184,6 +200,10 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
                     )
                 }
             }
+        }
+
+        if (!isExternalIntent) {
+            FirstLaunchDrivePrompt(viewModel = backupViewModel)
         }
     }
 }
