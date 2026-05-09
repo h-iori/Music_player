@@ -65,6 +65,8 @@ dependencies {
 
     // Media & Image Loading
     implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-transformer:1.3.1")
     implementation("io.coil-kt:coil:2.6.0")
 
     // ViewModel

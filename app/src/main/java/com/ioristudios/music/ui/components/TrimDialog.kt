@@ -20,25 +20,70 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ioristudios.music.data.model.Song
+import com.ioristudios.music.external.ExternalSongActions
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrimDialog(
     song: Song,
     onDismiss: () -> Unit,
-    onSave: (Float, Float) -> Unit
+    onSave: suspend (Float, Float) -> Unit
 ) {
     val haptic = rememberHapticFeedback()
+    val scope = rememberCoroutineScope()
+    var isSaving by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     var range by remember { mutableStateOf(0.2f..0.8f) }
-    
+    var isPlayingPreview by remember { mutableStateOf(false) }
+    var currentPositionMs by remember { mutableStateOf(0L) }
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            val uri = ExternalSongActions.sourceUri(context, song)
+            if (uri != null) {
+                setMediaItem(MediaItem.fromUri(uri))
+                prepare()
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    LaunchedEffect(isPlayingPreview, range.endInclusive) {
+        if (isPlayingPreview) {
+            val endMs = (range.endInclusive * song.duration * 1000).toLong()
+            while (isPlayingPreview) {
+                currentPositionMs = exoPlayer.currentPosition
+                if (exoPlayer.currentPosition >= endMs) {
+                    exoPlayer.pause()
+                    isPlayingPreview = false
+                    break
+                }
+                delay(50)
+            }
+        } else {
+            currentPositionMs = 0L
+        }
+    }
+
     // Animation for appearance
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
@@ -93,52 +138,89 @@ fun TrimDialog(
                     fontWeight = FontWeight.Medium
                 )
 
-                // Waveform placeholder
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(NeonPurpleFaint)
-                ) {
-                    // Simulated waveform bars
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                // Range Slider with Waveform
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                    // Waveform placeholder
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(NeonPurpleFaint)
                     ) {
-                        repeat(40) { index ->
-                            val height = remember { (20..80).random() }
-                            val isSelected = index / 40f in range
+                        // Simulated waveform bars
+                        val rand = java.util.Random(song.title.hashCode().toLong())
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            repeat(40) { index ->
+                                val height = remember(song.id) { rand.nextInt(60) + 10 }
+                                val isSelected = index / 40f in range
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(height.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) NeonPurple else NeonPurpleSubtle)
+                                )
+                            }
+                        }
+                    }
+
+                    // Playhead
+                    if (isPlayingPreview) {
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(80.dp)) {
+                            val progress = (currentPositionMs / (song.duration * 1000f)).coerceIn(0f, 1f)
+                            val horizontalPadding = 14.dp
+                            val availableWidth = maxWidth - (horizontalPadding * 2)
+                            val xOffset = horizontalPadding + (availableWidth * progress)
+                            
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(height.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isSelected) NeonPurple else NeonPurpleSubtle)
+                                    .offset(x = xOffset)
+                                    .width(2.dp)
+                                    .fillMaxHeight()
+                                    .background(Color.White)
+                                    .align(Alignment.CenterStart)
                             )
                         }
                     }
-                }
 
-                // Range Slider
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Range Slider
+                    val stepsCount = maxOf(0, song.duration.toInt() - 1)
                     RangeSlider(
                         value = range,
                         onValueChange = { 
                             haptic.performDragTick()
                             range = it 
+                            if (isPlayingPreview) {
+                                exoPlayer.pause()
+                                isPlayingPreview = false
+                            }
+                        },
+                        onValueChangeFinished = {
+                            val startMs = (range.start * song.duration * 1000).toLong()
+                            exoPlayer.seekTo(startMs)
+                            exoPlayer.play()
+                            isPlayingPreview = true
                         },
                         valueRange = 0f..1f,
+                        steps = stepsCount,
                         colors = SliderDefaults.colors(
                             thumbColor = Color.White,
-                            activeTrackColor = NeonPurple,
-                            inactiveTrackColor = NeonPurpleSubtle
+                            activeTrackColor = Color.Transparent,
+                            inactiveTrackColor = Color.Transparent,
+                            activeTickColor = Color.Transparent,
+                            inactiveTickColor = Color.Transparent
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(80.dp)
                     )
-                    
-                    Row(
+                }
+
+                Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -168,11 +250,18 @@ fun TrimDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
-                        onClick = onDismiss,
+                        onClick = {
+                            if (isPlayingPreview) {
+                                exoPlayer.pause()
+                                isPlayingPreview = false
+                            }
+                            onDismiss()
+                        },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(brush = SolidColor(NeonPurpleFaint)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SolidColor(NeonPurpleFaint)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        enabled = !isSaving
                     ) {
                         Text("Cancel")
                     }
@@ -180,18 +269,52 @@ fun TrimDialog(
                     Button(
                         onClick = { 
                             haptic.performHeavyClick()
-                            onSave(range.start, range.endInclusive) 
+                            if (isPlayingPreview) {
+                                exoPlayer.pause()
+                                isPlayingPreview = false
+                            }
+                            scope.launch {
+                                isSaving = true
+                                onSave(range.start, range.endInclusive)
+                                isSaving = false
+                                onDismiss()
+                            }
                         },
                         modifier = Modifier.weight(1f),
+                        enabled = !isSaving,
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = NeonPurple,
-                            contentColor = Color.White
+                            contentColor = Color.White,
+                            disabledContainerColor = NeonPurple.copy(alpha = 0.5f),
+                            disabledContentColor = Color.White.copy(alpha = 0.5f)
                         )
                     ) {
-                        Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Save & Set", fontWeight = FontWeight.Bold)
+                        if (!isSaving) {
+                            Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp), tint = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Save & Set", fontWeight = FontWeight.Bold, color = Color.White)
+                        } else {
+                            Text("Saving...", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+            
+            if (isSaving) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
+                        .pointerInput(Unit) {},
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(color = NeonPurple)
+                        Text("Setting up ringtone...", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

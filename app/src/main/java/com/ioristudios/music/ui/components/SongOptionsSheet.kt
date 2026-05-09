@@ -66,7 +66,7 @@ fun SongOptionsSheet(
     song: Song,
     isMultiSelect: Boolean = false,
     onDismiss: () -> Unit,
-    onTrimAndSetRingtone: (Float, Float) -> Unit = { _, _ -> },
+    onTrimAndSetRingtone: suspend (Float, Float) -> Unit = { _, _ -> },
     onEditName: (String) -> Unit = {},
     onShare: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -202,8 +202,8 @@ fun SongOptionsSheet(
             song = song,
             onDismiss = { showTrimDialog = false },
             onSave = { start, end ->
-                showTrimDialog = false
                 onTrimAndSetRingtone(start, end)
+                showTrimDialog = false
             }
         )
     }

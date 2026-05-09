@@ -2,21 +2,25 @@ package com.ioristudios.music.external
 
 import android.content.ContentValues
 import android.content.Context
-import android.media.MediaCodec
-import android.media.MediaExtractor
-import android.media.MediaFormat
-import android.media.MediaMuxer
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import androidx.media3.common.MediaItem
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Transformer
 import com.ioristudios.music.data.model.Song
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.nio.ByteBuffer
-import kotlin.math.max
+import java.io.File
+import kotlin.coroutines.resume
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object RingtoneTrimmer {
     suspend fun trimAndSetRingtone(
         context: Context,
@@ -40,89 +44,86 @@ object RingtoneTrimmer {
 
         val outputUri = insertPendingRingtone(context, song, startUs, endUs)
             ?: return@withContext RingtoneResult.Failed("Unable to create ringtone")
-        var extractor: MediaExtractor? = null
-        var muxer: MediaMuxer? = null
+
+        val tempFile = File(context.cacheDir, "ringtone_${System.currentTimeMillis()}.m4a")
+        
         try {
-            extractor = MediaExtractor().apply {
-                setDataSource(context, sourceUri, null)
-            }
-            val sourceTrack = findAudioTrack(extractor)
-                ?: return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.UnsupportedFormat(song.mimeType.ifBlank { "unknown" }))
-            val inputFormat = extractor.getTrackFormat(sourceTrack)
-            val inputMime = inputFormat.getString(MediaFormat.KEY_MIME).orEmpty()
-            if (!inputMime.startsWith("audio/")) {
-                return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.UnsupportedFormat(inputMime))
-            }
+            val mediaItem = MediaItem.Builder()
+                .setUri(sourceUri)
+                .setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionUs(startUs)
+                        .setEndPositionUs(endUs)
+                        .build()
+                )
+                .build()
 
-            context.contentResolver.openFileDescriptor(outputUri, "w")?.use { pfd ->
-                muxer = MediaMuxer(pfd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                val muxerTrack = try {
-                    muxer!!.addTrack(inputFormat)
-                } catch (_: RuntimeException) {
-                    return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.UnsupportedFormat(inputMime))
-                }
-                extractor.selectTrack(sourceTrack)
-                extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-                val maxInputSize = if (inputFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-                    inputFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
-                } else {
-                    DEFAULT_BUFFER_SIZE
-                }
-                val buffer = ByteBuffer.allocateDirect(max(DEFAULT_BUFFER_SIZE, maxInputSize))
-                val bufferInfo = MediaCodec.BufferInfo()
-                muxer!!.start()
+            val editedMediaItem = EditedMediaItem.Builder(mediaItem).build()
 
-                var firstSampleTimeUs = -1L
-                var wroteSamples = false
-                while (true) {
-                    val sampleTimeUs = extractor.sampleTime
-                    if (sampleTimeUs < 0 || sampleTimeUs > endUs) break
-                    if (extractor.sampleTrackIndex != sourceTrack || sampleTimeUs < startUs) {
-                        extractor.advance()
-                        continue
+            val exportResult = withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine<Result<Unit>> { continuation ->
+                    val transformer = Transformer.Builder(context)
+                        .addListener(object : Transformer.Listener {
+                            override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                                if (continuation.isActive) {
+                                    continuation.resume(Result.success(Unit))
+                                }
+                            }
+
+                            override fun onError(
+                                composition: Composition,
+                                exportResult: ExportResult,
+                                exportException: ExportException
+                            ) {
+                                if (continuation.isActive) {
+                                    continuation.resume(Result.failure(exportException))
+                                }
+                            }
+                        })
+                        .build()
+
+                    transformer.start(editedMediaItem, tempFile.absolutePath)
+
+                    continuation.invokeOnCancellation {
+                        transformer.cancel()
                     }
-                    val sampleSize = extractor.readSampleData(buffer, 0)
-                    if (sampleSize < 0) break
-                    if (firstSampleTimeUs < 0) firstSampleTimeUs = sampleTimeUs
-                    val outputFlags = extractor.sampleFlags.toBufferInfoFlags()
-                    bufferInfo.set(
-                        0,
-                        sampleSize,
-                        sampleTimeUs - firstSampleTimeUs,
-                        outputFlags
-                    )
-                    muxer!!.writeSampleData(muxerTrack, buffer, bufferInfo)
-                    wroteSamples = true
-                    extractor.advance()
                 }
-                muxer!!.stop()
-                muxer!!.release()
-                muxer = null
-                if (!wroteSamples) {
-                    return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.Failed("No audio samples in selected range"))
+            }
+
+            if (exportResult.isFailure) {
+                return@withContext cleanupAndReturn(
+                    context,
+                    outputUri,
+                    RingtoneResult.Failed(exportResult.exceptionOrNull()?.message ?: "Export failed")
+                )
+            }
+
+            context.contentResolver.openOutputStream(outputUri)?.use { out ->
+                tempFile.inputStream().use { input ->
+                    input.copyTo(out)
                 }
-            } ?: return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.Failed("Unable to open ringtone output"))
+            } ?: return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.Failed("Unable to write ringtone output"))
 
             publishRingtone(context, outputUri)
             RingtoneManager.setActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE, outputUri)
-            RingtoneResult.Trimmed(outputUri)
-        } catch (unsupported: IllegalArgumentException) {
-            cleanupAndReturn(context, outputUri, RingtoneResult.UnsupportedFormat(song.mimeType.ifBlank { unsupported.message ?: "unknown" }))
-        } catch (failure: Exception) {
-            cleanupAndReturn(context, outputUri, RingtoneResult.Failed(failure.message ?: "Unable to trim ringtone"))
+            
+            try {
+                val resolver = context.contentResolver
+                val uriString = outputUri.toString()
+                android.provider.Settings.System.putString(resolver, "ringtone_sim2", uriString)
+                android.provider.Settings.System.putString(resolver, "ringtone_2", uriString)
+                android.provider.Settings.System.putString(resolver, "ringtone_sim1", uriString)
+                android.provider.Settings.System.putString(resolver, "ringtone_1", uriString)
+            } catch (e: Exception) {
+                // Ignore undocumented key exceptions
+            }
+            
+            return@withContext RingtoneResult.Trimmed(outputUri)
+        } catch (e: Exception) {
+            return@withContext cleanupAndReturn(context, outputUri, RingtoneResult.Failed(e.message ?: "Unable to trim ringtone"))
         } finally {
-            runCatching { muxer?.release() }
-            runCatching { extractor?.release() }
+            tempFile.delete()
         }
-    }
-
-    private fun findAudioTrack(extractor: MediaExtractor): Int? {
-        for (index in 0 until extractor.trackCount) {
-            val format = extractor.getTrackFormat(index)
-            val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
-            if (mime.startsWith("audio/")) return index
-        }
-        return null
     }
 
     private fun insertPendingRingtone(context: Context, song: Song, startUs: Long, endUs: Long): Uri? {
@@ -155,17 +156,5 @@ object RingtoneTrimmer {
         return result
     }
 
-    private fun Int.toBufferInfoFlags(): Int {
-        var flags = 0
-        if (this and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
-            flags = flags or MediaCodec.BUFFER_FLAG_SYNC_FRAME
-        }
-        if (this and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
-            flags = flags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
-        }
-        return flags
-    }
-
-    private const val DEFAULT_BUFFER_SIZE = 256 * 1024
     private const val MIN_CLIP_US = 1_000_000L
 }

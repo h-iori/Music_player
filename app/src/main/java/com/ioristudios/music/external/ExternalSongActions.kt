@@ -59,6 +59,16 @@ object ExternalSongActions {
             ?: return RingtoneResult.Failed("No accessible audio Uri")
         return runCatching {
             RingtoneManager.setActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE, uri)
+            try {
+                val resolver = context.contentResolver
+                val uriString = uri.toString()
+                android.provider.Settings.System.putString(resolver, "ringtone_sim2", uriString)
+                android.provider.Settings.System.putString(resolver, "ringtone_2", uriString)
+                android.provider.Settings.System.putString(resolver, "ringtone_sim1", uriString)
+                android.provider.Settings.System.putString(resolver, "ringtone_1", uriString)
+            } catch (e: Exception) {
+                // Ignore undocumented key exceptions
+            }
             RingtoneResult.Success
         }.getOrElse { RingtoneResult.Failed(it.message ?: "Unable to set ringtone") }
     }

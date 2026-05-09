@@ -379,10 +379,8 @@ fun PlaylistDetailScreen(
                 onDismiss = { selectedSongOptions = null },
                 onShare = { ExternalSongActions.shareSong(context, song) },
                 onTrimAndSetRingtone = { start, end ->
-                    scope.launch {
-                        val result = ExternalSongActions.trimAndSetRingtone(context, song, start, end)
-                        Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
-                    }
+                    val result = ExternalSongActions.trimAndSetRingtone(context, song, start, end)
+                    Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
                 },
                 onEditName = { newTitle ->
                     val result = ExternalSongActions.updateSongTitle(context, song, newTitle)

@@ -84,6 +84,17 @@ class MainActivity : ComponentActivity() {
                 startActivity(intent)
             }
         }
+
+        if (!Settings.System.canWrite(this)) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
