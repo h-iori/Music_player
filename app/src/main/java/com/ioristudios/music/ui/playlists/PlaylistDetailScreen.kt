@@ -221,9 +221,23 @@ fun PlaylistDetailScreen(
                             }
                         )
 
+                        // Use a ref to access the state within its own confirmValueChange callback
+                        val dismissStateRef = remember { object { var state: SwipeToDismissBoxState? = null } }
+                        var itemWidth by remember { mutableStateOf(0f) }
+                        
                         val dismissState = rememberSwipeToDismissBoxState(
+                            positionalThreshold = { totalDistance ->
+                                itemWidth = totalDistance
+                                totalDistance * 0.35f
+                            },
                             confirmValueChange = { value ->
                                 if (value == SwipeToDismissBoxValue.StartToEnd) {
+                                    // Enforce the 35% threshold strictly, even for high-velocity flings
+                                    val currentOffset = dismissStateRef.state?.requireOffset() ?: 0f
+                                    if (currentOffset < itemWidth * 0.35f) {
+                                        return@rememberSwipeToDismissBoxState false
+                                    }
+
                                     val songIndex = songs.indexOf(song)
                                     lastRemovedSong = songIndex to song
                                     songs.remove(song)
@@ -248,6 +262,7 @@ fun PlaylistDetailScreen(
                                 } else false
                             }
                         )
+                        dismissStateRef.state = dismissState
 
                         SwipeToDismissBox(
                             state = dismissState,
