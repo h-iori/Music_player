@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +36,7 @@ import com.ioristudios.music.ui.util.rememberHapticFeedback
 fun AddSongsToPlaylistDialog(
     onDismiss: () -> Unit,
     allSongs: List<Song>,
+    existingSongs: List<Song>,
     onAddSongs: (List<Song>) -> Unit
 ) {
     val haptic = rememberHapticFeedback()
@@ -116,13 +118,18 @@ fun AddSongsToPlaylistDialog(
                 ) {
                     items(filteredSongs, key = { it.id }) { song ->
                         val isSelected = selectedSongs.any { it.id == song.id }
+                        val isAlreadyAdded = existingSongs.any { it.id == song.id }
+                        
                         SelectableSongRow(
                             song = song,
                             isSelected = isSelected,
+                            isAlreadyAdded = isAlreadyAdded,
                             onToggle = {
-                                haptic.performClick()
-                                if (isSelected) selectedSongs.removeAll { it.id == song.id }
-                                else selectedSongs.add(song)
+                                if (!isAlreadyAdded) {
+                                    haptic.performClick()
+                                    if (isSelected) selectedSongs.removeAll { it.id == song.id }
+                                    else selectedSongs.add(song)
+                                }
                             }
                         )
                     }
@@ -136,26 +143,44 @@ fun AddSongsToPlaylistDialog(
 private fun SelectableSongRow(
     song: Song,
     isSelected: Boolean,
+    isAlreadyAdded: Boolean,
     onToggle: () -> Unit
 ) {
+    val alpha = if (isAlreadyAdded) 0.5f else 1f
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(if (isSelected) NeonPurpleFaint else SurfaceDarkCard)
-            .border(1.dp, if (isSelected) NeonPurple else Color.Transparent, RoundedCornerShape(16.dp))
-            .clickable { onToggle() }
+            .background(
+                when {
+                    isAlreadyAdded -> SurfaceDarkCard.copy(alpha = 0.2f)
+                    isSelected -> NeonPurpleFaint
+                    else -> SurfaceDarkCard
+                }
+            )
+            .border(
+                1.dp, 
+                when {
+                    isAlreadyAdded -> Color.Transparent
+                    isSelected -> NeonPurple
+                    else -> Color.Transparent
+                }, 
+                RoundedCornerShape(16.dp)
+            )
+            .clickable(enabled = !isAlreadyAdded) { onToggle() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Checkbox(
-            checked = isSelected,
-            onCheckedChange = { onToggle() },
+            checked = isSelected || isAlreadyAdded,
+            onCheckedChange = { if (!isAlreadyAdded) onToggle() },
+            enabled = !isAlreadyAdded,
             colors = CheckboxDefaults.colors(
-                checkedColor = NeonPurple,
+                checkedColor = if (isAlreadyAdded) TextMuted else NeonPurple,
                 uncheckedColor = TextMuted,
-                checkmarkColor = Color.Black
+                checkmarkColor = if (isAlreadyAdded) Color.Transparent else Color.Black
             )
         )
         
@@ -166,11 +191,22 @@ private fun SelectableSongRow(
             Icon(Icons.Default.Add, null, tint = NeonPurple, modifier = Modifier.size(20.dp))
         }
 
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).graphicsLayer { this.alpha = alpha }) {
             Text(song.title, color = CoreWhiteDim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(song.artist, color = TextSecondary, fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(song.artist, color = TextSecondary, fontSize = 12.sp)
+                if (isAlreadyAdded) {
+                    Text("•", color = TextMuted, fontSize = 12.sp)
+                    Text("Already in playlist", color = NeonPurpleSubtle, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         
-        Text(song.formattedDuration(), color = TextMuted, fontSize = 12.sp)
+        Text(
+            song.formattedDuration(), 
+            color = TextMuted, 
+            fontSize = 12.sp,
+            modifier = Modifier.graphicsLayer { this.alpha = alpha }
+        )
     }
 }

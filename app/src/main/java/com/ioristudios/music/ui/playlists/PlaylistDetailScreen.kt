@@ -377,6 +377,7 @@ fun PlaylistDetailScreen(
             com.ioristudios.music.ui.components.AddSongsToPlaylistDialog(
                 onDismiss = { showAddSongsDialog = false },
                 allSongs = allSongs,
+                existingSongs = songs,
                 onAddSongs = { newSongs ->
                     // Add only those that aren't already in the playlist
                     val existingIds = songs.map { it.id }.toSet()
