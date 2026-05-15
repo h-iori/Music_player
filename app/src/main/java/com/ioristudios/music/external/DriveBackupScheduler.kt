@@ -3,6 +3,7 @@ package com.ioristudios.music.external
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
@@ -35,7 +36,7 @@ object DriveBackupScheduler {
             .addTag(WORK_NAME)
             .build()
         WorkManager.getInstance(context.applicationContext)
-            .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+            .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
     }
 
     fun cancel(context: Context) {
@@ -65,7 +66,7 @@ object DriveBackupScheduler {
             )
             .build()
         WorkManager.getInstance(context.applicationContext)
-            .enqueue(request)
+            .enqueueUniqueWork("immediate_backup", ExistingWorkPolicy.KEEP, request)
     }
 
     private fun millisUntilNextMidnight(): Long {

@@ -20,6 +20,7 @@ import android.graphics.drawable.VectorDrawable
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -792,6 +793,18 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         }
         
         mediaSession.setMetadata(metadataBuilder.build())
+        
+        val queueItems = state.queue.mapIndexed { index, song ->
+            MediaSessionCompat.QueueItem(
+                MediaDescriptionCompat.Builder()
+                    .setMediaId(song.id.toString())
+                    .setTitle(song.title)
+                    .setSubtitle(song.artist)
+                    .build(),
+                index.toLong()
+            )
+        }
+        mediaSession.setQueue(queueItems)
         
         // Ensure notification is up to date with new metadata/state
         refreshNotification()
