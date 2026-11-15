@@ -76,4 +76,8 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
             repository.createPlaylist(name)
         }
     }
+
+    fun renamePlaylist(playlistId: Long, newName: String, onResult: (Boolean) -> Unit) {
+        repository.renamePlaylist(playlistId, newName, onResult)
+    }
 }

@@ -1,6 +1,8 @@
 package com.ioristudios.music.ui.theme
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -47,7 +49,8 @@ fun MusicTheme(content: @Composable () -> Unit) {
 
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
+            val activity = view.context.findActivity() ?: return@SideEffect
+            val window = activity.window
             window.statusBarColor = SurfaceDark.toArgb()
             window.navigationBarColor = SurfaceDark.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
@@ -63,4 +66,13 @@ fun MusicTheme(content: @Composable () -> Unit) {
         shapes = MusicShapes,
         content = content
     )
+}
+
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

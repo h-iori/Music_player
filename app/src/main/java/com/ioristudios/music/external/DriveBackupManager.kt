@@ -30,7 +30,8 @@ object DriveBackupManager {
     ): BackupResult = withContext(Dispatchers.IO) {
         val appContext = context.applicationContext
         val client = DriveRestClient(accessToken)
-        val existingFiles = client.listAppDataFiles("name contains '$SONG_PREFIX'")
+        val existingFiles = client.listAppDataFiles()
+            .filter { it.name.startsWith(SONG_PREFIX) }
             .associateBy { it.name }
         val backupSongs = mutableListOf<BackupSong>()
         val hashBySongId = mutableMapOf<Long, String>()
@@ -99,7 +100,8 @@ object DriveBackupManager {
 
     suspend fun listBackups(accessToken: String): List<BackupSnapshot> = withContext(Dispatchers.IO) {
         val client = DriveRestClient(accessToken)
-        client.listAppDataFiles("name contains '$MANIFEST_PREFIX' and name contains '$MANIFEST_SUFFIX'")
+        client.listAppDataFiles()
+            .filter { it.name.startsWith(MANIFEST_PREFIX) && it.name.endsWith(MANIFEST_SUFFIX) }
             .mapNotNull { file ->
                 runCatching {
                     val manifest = BackupManifest.fromJson(client.downloadText(file.id))
@@ -125,7 +127,9 @@ object DriveBackupManager {
         val appContext = context.applicationContext
         val client = DriveRestClient(accessToken)
         val manifest = BackupManifest.fromJson(client.downloadText(snapshot.driveFileId))
-        val songFiles = client.listAppDataFiles("name contains '$SONG_PREFIX'").associateBy { it.name }
+        val songFiles = client.listAppDataFiles()
+            .filter { it.name.startsWith(SONG_PREFIX) }
+            .associateBy { it.name }
         val restoredSongs = mutableListOf<Song>()
         val restoredIdsByHash = mutableMapOf<String, Long>()
         var skipped = 0

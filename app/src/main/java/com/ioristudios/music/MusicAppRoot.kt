@@ -32,12 +32,16 @@ import com.ioristudios.music.ui.theme.SurfaceDark
 import com.ioristudios.music.ui.util.AnimDuration
 import com.ioristudios.music.ui.VolumeViewModel
 import com.ioristudios.music.ui.components.VolumeBoostControl
+import com.ioristudios.music.ui.components.VolumeBoosterModal
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ioristudios.music.ui.about.AboutScreen
 import com.ioristudios.music.playback.PlaybackService
 
 @Composable
-fun MusicAppRoot(isExternalIntent: Boolean = false) {
+fun MusicAppRoot(
+    isExternalIntent: Boolean = false,
+    volumeViewModel: VolumeViewModel = viewModel()
+) {
     MusicTheme {
         val context = LocalContext.current
         val navController = rememberNavController()
@@ -49,10 +53,12 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
         // Determine if bottom nav should show
         val showBottomNav = !isExternalIntent && currentRoute in listOf("library", "now_playing", "playlists")
 
-        // Back handler to ensure user goes to Library before exiting, or finishes activity if in external mode
+        // Back handler to navigate through backstack, or return to Library before exiting
         BackHandler(enabled = isExternalIntent || currentRoute != "library") {
             if (isExternalIntent) {
                 (context as? android.app.Activity)?.finish()
+            } else if (navController.previousBackStackEntry != null) {
+                navController.popBackStack()
             } else {
                 navController.navigate("library") {
                     popUpTo("library") { inclusive = true }
@@ -176,13 +182,14 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
                     }
                 }
 
-                // Global Volume Bar Overlay
-                val volumeViewModel: VolumeViewModel = viewModel()
+                // Global Volume Bar Overlay & Super Volume Booster Modal
                 val isVolumeVisible by volumeViewModel.isVisible.collectAsState()
+                val isBoosterModalVisible by volumeViewModel.isBoosterModalVisible.collectAsState()
                 val volumePercent by volumeViewModel.volumePercent.collectAsState()
 
+                // Standard Floating Bar (0-100%)
                 AnimatedVisibility(
-                    visible = isVolumeVisible,
+                    visible = isVolumeVisible && !isBoosterModalVisible,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically(),
                     modifier = Modifier
@@ -196,9 +203,27 @@ fun MusicAppRoot(isExternalIntent: Boolean = false) {
                             volumeViewModel.setVolume(it)
                             PlaybackService.setVolume(context, it)
                         },
+                        onOpenBoosterModal = {
+                            PlaybackService.setVolume(context, 150f)
+                            volumeViewModel.showBoosterModal()
+                        },
                         isFloating = true
                     )
                 }
+
+                // Super Volume Booster Modal (> 100% up to 300%)
+                VolumeBoosterModal(
+                    isVisible = isBoosterModalVisible,
+                    volumePercent = volumePercent,
+                    onVolumeChange = {
+                        volumeViewModel.setVolume(it)
+                        PlaybackService.setVolume(context, it)
+                    },
+                    onDismiss = {
+                        volumeViewModel.hideBoosterModal()
+                    },
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
         }
 

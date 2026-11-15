@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -46,9 +47,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         .map { it.currentSong?.id }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
     val filteredSongs: StateFlow<List<Song>> = combine(
         repository.songs,
-        _searchQuery,
+        _searchQuery.debounce(250L),
         _sortMode
     ) { allSongs, query, mode ->
         val filtered = if (query.isBlank()) {

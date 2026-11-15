@@ -41,12 +41,17 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Storage
+import com.ioristudios.music.ui.components.GoogleDriveSetupDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -112,12 +117,32 @@ fun BackupScreen(
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && activity != null) {
-            viewModel.handleAuthorizationResult(activity, result.data)
+        if (activity != null) {
+            viewModel.handleAuthorizationResult(activity, result.resultCode, result.data)
         }
     }
     val launchResolution: (android.app.PendingIntent) -> Unit = { pendingIntent ->
         authLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.openOutputStream(uri)?.use { stream ->
+                viewModel.exportLocalBackup(stream)
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                viewModel.importLocalBackup(stream)
+            }
+        }
     }
 
     Box(
@@ -146,6 +171,10 @@ fun BackupScreen(
                     onDisconnect = {
                         haptic.performClick()
                         viewModel.disconnectDrive()
+                    },
+                    onOpenSetupGuide = {
+                        haptic.performClick()
+                        viewModel.setShowSetupGuide(true)
                     }
                 )
             }
@@ -187,13 +216,28 @@ fun BackupScreen(
                 LatestBackupCard(snapshot = state.latestBackup)
             }
 
+            item {
+                LocalBackupCard(
+                    onExport = {
+                        haptic.performClick()
+                        exportLauncher.launch("iori_music_backup_${System.currentTimeMillis()}.json")
+                    },
+                    onImport = {
+                        haptic.performClick()
+                        importLauncher.launch(arrayOf("application/json", "*/*"))
+                    }
+                )
+            }
+
             state.error?.let { error ->
                 item {
                     StatusBanner(
                         iconTint = ErrorRed,
                         icon = Icons.Filled.Error,
                         title = "Action needed",
-                        message = error
+                        message = error,
+                        actionText = if (error.contains("Google Cloud Console") || error.contains("UNREGISTERED_ON_API_CONSOLE")) "View Setup Guide" else null,
+                        onAction = { viewModel.setShowSetupGuide(true) }
                     )
                 }
             }
@@ -205,8 +249,20 @@ fun BackupScreen(
             exit = fadeOut(tween(AnimDuration.FAST)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            ProgressSheet(message = state.progress ?: "Working with Drive")
+            ProgressSheet(
+                message = state.progress ?: "Working with Drive",
+                onCancel = {
+                    haptic.performClick()
+                    viewModel.cancelOperation()
+                }
+            )
         }
+    }
+
+    if (state.showSetupGuide) {
+        GoogleDriveSetupDialog(
+            onDismiss = { viewModel.setShowSetupGuide(false) }
+        )
     }
 
     if (showRestoreConfirm) {
@@ -234,8 +290,8 @@ fun FirstLaunchDrivePrompt(
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && activity != null) {
-            viewModel.handleAuthorizationResult(activity, result.data)
+        if (activity != null) {
+            viewModel.handleAuthorizationResult(activity, result.resultCode, result.data)
         }
     }
 
@@ -319,7 +375,8 @@ private fun BackupHeader(onBack: () -> Unit) {
 private fun DriveStatusCard(
     state: BackupUiState,
     onLink: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    onOpenSetupGuide: () -> Unit
 ) {
     BackupCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -347,15 +404,20 @@ private fun DriveStatusCard(
                     Icon(Icons.Filled.LinkOff, contentDescription = "Disconnect Drive", tint = TextSecondary)
                 }
             } else {
-                Button(
-                    onClick = onLink,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NeonPurple,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Link", color = Color.White)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onOpenSetupGuide) {
+                        Icon(Icons.Filled.Info, contentDescription = "Drive Setup Info", tint = NeonPurple)
+                    }
+                    Button(
+                        onClick = onLink,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonPurple,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Link", color = Color.White)
+                    }
                 }
             }
         }
@@ -483,11 +545,53 @@ private fun LatestBackupCard(snapshot: BackupSnapshot?) {
 }
 
 @Composable
+private fun LocalBackupCard(
+    onExport: () -> Unit,
+    onImport: () -> Unit
+) {
+    BackupCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                GlowIcon(Icons.Filled.FolderZip, NeonPurple)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Device local backup", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Export or restore your playlists and songs JSON directly on your device.", color = TextSecondary, fontSize = 13.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onExport,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, NeonPurpleSubtle)
+                ) {
+                    Icon(Icons.Filled.FileDownload, contentDescription = null, tint = NeonPurple, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("Export JSON", color = TextPrimary, fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = onImport,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, NeonPurpleSubtle)
+                ) {
+                    Icon(Icons.Filled.FileUpload, contentDescription = null, tint = NeonPurple, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("Import JSON", color = TextPrimary, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatusBanner(
     iconTint: Color,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    message: String
+    message: String,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null
 ) {
     Surface(
         color = SurfaceDarkElevated,
@@ -495,11 +599,23 @@ private fun StatusBanner(
         border = BorderStroke(1.dp, iconTint.copy(alpha = 0.35f)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(icon, contentDescription = null, tint = iconTint)
-            Column {
-                Text(title, color = TextPrimary, fontWeight = FontWeight.Bold)
-                Text(message, color = TextSecondary, fontSize = 13.sp)
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(icon, contentDescription = null, tint = iconTint)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(message, color = TextSecondary, fontSize = 13.sp)
+                }
+            }
+            if (actionText != null && onAction != null) {
+                OutlinedButton(
+                    onClick = onAction,
+                    modifier = Modifier.align(Alignment.End),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, iconTint.copy(alpha = 0.6f))
+                ) {
+                    Text(actionText, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
@@ -543,7 +659,10 @@ private fun GlowIcon(
 }
 
 @Composable
-private fun ProgressSheet(message: String) {
+private fun ProgressSheet(
+    message: String,
+    onCancel: () -> Unit = {}
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -558,7 +677,10 @@ private fun ProgressSheet(message: String) {
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             CircularProgressIndicator(color = NeonPurple, modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
-            Text(message, color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            Text(message, color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 2, modifier = Modifier.weight(1f))
+            TextButton(onClick = onCancel) {
+                Text("Cancel", color = ErrorRed, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

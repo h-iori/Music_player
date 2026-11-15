@@ -114,10 +114,27 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
         } else 0f
     }
 
-    var isFavorite by remember { mutableStateOf(false) }
+    val favPrefs = remember { context.getSharedPreferences("user_favorites", android.content.Context.MODE_PRIVATE) }
+    var favoriteSet by remember {
+        mutableStateOf(favPrefs.getStringSet("fav_ids", emptySet())?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet())
+    }
+    val isFavorite = currentSong?.let { favoriteSet.contains(it.id) } ?: false
     var showOptions by remember { mutableStateOf(false) }
     var lastSeekDecile by remember { mutableIntStateOf((seekPosition * 10).toInt()) }
     
+    var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    val deletePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && pendingDeleteIds.isNotEmpty()) {
+            com.ioristudios.music.data.repository.MusicRepository.getInstance(context).completeDeleteAfterUserApproval(pendingDeleteIds)
+            PlaybackService.next(context)
+            Toast.makeText(context, "Song deleted", Toast.LENGTH_SHORT).show()
+        }
+        pendingDeleteIds = emptySet()
+        showOptions = false
+    }
+
     var pendingTitleUpdate by remember { mutableStateOf<Pair<Song, String>?>(null) }
     val editPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -247,7 +264,12 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
                 IconButton(
                     onClick = {
                         haptic.performHeavyClick()
-                        isFavorite = !isFavorite
+                        val songId = currentSong?.id
+                        if (songId != null) {
+                            val next = if (favoriteSet.contains(songId)) favoriteSet - songId else favoriteSet + songId
+                            favoriteSet = next
+                            favPrefs.edit().putStringSet("fav_ids", next.map { it.toString() }.toSet()).apply()
+                        }
                     },
                     modifier = Modifier
                         .size(44.dp)
@@ -489,6 +511,20 @@ fun NowPlayingScreen(modifier: Modifier = Modifier) {
             onTrimAndSetRingtone = { start, end ->
                 val result = ExternalSongActions.trimAndSetRingtone(context, song, start, end)
                 Toast.makeText(context, result.userMessage(), Toast.LENGTH_LONG).show()
+            },
+            onDelete = {
+                val repo = com.ioristudios.music.data.repository.MusicRepository.getInstance(context)
+                val plan = repo.prepareDelete(listOf(song.id))
+                if (plan.requiresUserApproval) {
+                    pendingDeleteIds = plan.requestedIds
+                    deletePermissionLauncher.launch(
+                        IntentSenderRequest.Builder(plan.pendingIntent!!.intentSender).build()
+                    )
+                } else {
+                    PlaybackService.next(context)
+                    Toast.makeText(context, "Song deleted", Toast.LENGTH_SHORT).show()
+                    showOptions = false
+                }
             },
             onEditName = { newTitle ->
                 val result = ExternalSongActions.updateSongTitle(context, song, newTitle)

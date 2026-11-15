@@ -178,9 +178,10 @@ private fun SelectableSongRow(
             onCheckedChange = { if (!isAlreadyAdded) onToggle() },
             enabled = !isAlreadyAdded,
             colors = CheckboxDefaults.colors(
-                checkedColor = if (isAlreadyAdded) TextMuted else NeonPurple,
+                checkedColor = if (isAlreadyAdded) TextMuted.copy(alpha = 0.5f) else NeonPurple,
                 uncheckedColor = TextMuted,
-                checkmarkColor = if (isAlreadyAdded) Color.Transparent else Color.Black
+                checkmarkColor = if (isAlreadyAdded) Color.White.copy(alpha = 0.7f) else Color.Black,
+                disabledCheckedColor = TextMuted.copy(alpha = 0.4f)
             )
         )
         

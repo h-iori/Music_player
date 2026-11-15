@@ -155,11 +155,30 @@ class MusicRepository private constructor(context: Context) {
         }
     }
 
-    fun renamePlaylist(playlistId: Long, name: String) {
-        if (name.isBlank()) return
+    suspend fun renamePlaylist(playlistId: Long, name: String): Boolean = withContext(Dispatchers.IO) {
+        if (name.isBlank()) return@withContext false
+        val success = database.renamePlaylist(playlistId, name)
+        if (success) {
+            val loadedSongs = database.getSongs()
+            val byId = loadedSongs.associateBy { it.id }
+            _playlists.value = database.getPlaylists(byId)
+        }
+        success
+    }
+
+    fun renamePlaylist(playlistId: Long, name: String, onResult: ((Boolean) -> Unit)? = null) {
+        if (name.isBlank()) {
+            onResult?.invoke(false)
+            return
+        }
         scope.launch {
-            database.renamePlaylist(playlistId, name)
-            refreshFromDatabase()
+            val success = database.renamePlaylist(playlistId, name)
+            if (success) {
+                refreshFromDatabase()
+            }
+            withContext(Dispatchers.Main) {
+                onResult?.invoke(success)
+            }
         }
     }
 
@@ -188,6 +207,16 @@ class MusicRepository private constructor(context: Context) {
         scope.launch {
             database.reorderPlaylist(playlistId, songs.map { it.id })
             refreshFromDatabase()
+        }
+    }
+
+    fun recordPlayed(song: Song) {
+        scope.launch {
+            database.ensureSongExists(song)
+            database.addHistory(song.id)
+            val byId = _songs.value.associateBy { it.id }.toMutableMap()
+            byId[song.id] = song
+            _history.value = database.getHistory(byId)
         }
     }
 

@@ -29,14 +29,16 @@ object DriveBackupScheduler {
         val request = PeriodicWorkRequestBuilder<DriveBackupWorker>(1, TimeUnit.DAYS)
             .setConstraints(
                 Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .setRequiredNetworkType(NetworkType.UNMETERED)
+                    .setRequiresCharging(true)
+                    .setRequiresBatteryNotLow(true)
                     .build()
             )
             .setInitialDelay(millisUntilNextMidnight(), TimeUnit.MILLISECONDS)
             .addTag(WORK_NAME)
             .build()
         WorkManager.getInstance(context.applicationContext)
-            .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+            .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
     fun cancel(context: Context) {

@@ -93,6 +93,7 @@ fun PlaylistDetailScreen(
     var showRemoveConfirm by remember { mutableStateOf(false) }
     var songToRemove by remember { mutableStateOf<Song?>(null) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
     var selectedSongOptions by remember { mutableStateOf<Song?>(null) }
     var pendingTitleUpdate by remember { mutableStateOf<Pair<Song, String>?>(null) }
     val editPermissionLauncher = rememberLauncherForActivityResult(
@@ -165,6 +166,12 @@ fun PlaylistDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        haptic.performClick()
+                        showRenameDialog = true
+                    }) {
+                        Icon(Icons.Filled.Edit, "Rename Playlist", tint = NeonPurple)
+                    }
                     IconButton(onClick = {
                         haptic.performClick()
                         ExternalSongActions.shareSongs(context, songs.toList())
@@ -372,6 +379,23 @@ fun PlaylistDetailScreen(
                 )
             }
         )
+
+        if (showRenameDialog) {
+            com.ioristudios.music.ui.components.RenamePlaylistDialog(
+                initialName = playlist.name,
+                onDismiss = { showRenameDialog = false },
+                onRename = { newName ->
+                    repository.renamePlaylist(playlist.id, newName) { success ->
+                        if (success) {
+                            Toast.makeText(context, "Playlist renamed", Toast.LENGTH_SHORT).show()
+                            showRenameDialog = false
+                        } else {
+                            Toast.makeText(context, "A playlist with this name already exists", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
+        }
 
         if (showAddSongsDialog) {
             com.ioristudios.music.ui.components.AddSongsToPlaylistDialog(

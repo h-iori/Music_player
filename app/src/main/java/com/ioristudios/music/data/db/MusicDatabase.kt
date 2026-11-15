@@ -54,7 +54,7 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 playlist_id INTEGER NOT NULL,
                 song_id INTEGER NOT NULL,
                 position INTEGER NOT NULL,
-                PRIMARY KEY (playlist_id, song_id),
+                PRIMARY KEY (playlist_id, position),
                 FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
                 FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
             )
@@ -78,11 +78,28 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS history")
-        db.execSQL("DROP TABLE IF EXISTS playlist_songs")
-        db.execSQL("DROP TABLE IF EXISTS playlists")
-        db.execSQL("DROP TABLE IF EXISTS songs")
-        onCreate(db)
+        if (oldVersion < 3) {
+            try {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS playlist_songs_v3 (
+                        playlist_id INTEGER NOT NULL,
+                        song_id INTEGER NOT NULL,
+                        position INTEGER NOT NULL,
+                        PRIMARY KEY (playlist_id, position),
+                        FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+                        FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("INSERT OR IGNORE INTO playlist_songs_v3 SELECT playlist_id, song_id, position FROM playlist_songs")
+                db.execSQL("DROP TABLE IF EXISTS playlist_songs")
+                db.execSQL("ALTER TABLE playlist_songs_v3 RENAME TO playlist_songs")
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_playlist_position ON playlist_songs(playlist_id, position)")
+            } catch (e: Exception) {
+                // Ignore if migration was already applied
+            }
+        }
     }
 
     fun replaceSongs(songs: List<Song>) {
@@ -135,9 +152,17 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
                 insertScannedId.executeInsert()
             }
             
-            delete("songs", "id NOT IN (SELECT id FROM scanned_song_ids)", null)
+            delete(
+                "songs",
+                "id NOT IN (SELECT id FROM scanned_song_ids) AND id NOT IN (SELECT song_id FROM playlist_songs) AND id NOT IN (SELECT song_id FROM history)",
+                null
+            )
             delete("scanned_song_ids", null, null)
         }
+    }
+
+    fun ensureSongExists(song: Song) {
+        writableDatabase.insertWithOnConflict("songs", null, song.toValues(), SQLiteDatabase.CONFLICT_IGNORE)
     }
 
     fun getSongs(): List<Song> = readableDatabase.query(
@@ -211,12 +236,26 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
         return writableDatabase.insertWithOnConflict("playlists", null, values, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
-    fun renamePlaylist(playlistId: Long, name: String) {
+    fun renamePlaylist(playlistId: Long, name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        val cursor = readableDatabase.query(
+            "playlists",
+            arrayOf("id"),
+            "name = ? COLLATE NOCASE AND id != ?",
+            arrayOf(trimmed, playlistId.toString()),
+            null,
+            null,
+            null
+        )
+        val duplicate = cursor.use { it.moveToFirst() }
+        if (duplicate) return false
+
         val values = ContentValues().apply {
-            put("name", name.trim())
+            put("name", trimmed)
             put("modified_at", System.currentTimeMillis())
         }
-        writableDatabase.update("playlists", values, "id = ?", arrayOf(playlistId.toString()))
+        return writableDatabase.update("playlists", values, "id = ?", arrayOf(playlistId.toString())) > 0
     }
 
     fun deletePlaylists(ids: Collection<Long>) {
@@ -373,6 +412,6 @@ class MusicDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null,
 
     companion object {
         private const val DB_NAME = "music.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
     }
 }

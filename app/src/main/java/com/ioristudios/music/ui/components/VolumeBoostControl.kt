@@ -9,10 +9,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -32,6 +34,7 @@ fun VolumeBoostControl(
     modifier: Modifier = Modifier,
     volumePercent: Float = 100f,
     onVolumeChange: (Float) -> Unit = {},
+    onOpenBoosterModal: (() -> Unit)? = null,
     isFloating: Boolean = false
 ) {
     val haptic = rememberHapticFeedback()
@@ -61,7 +64,7 @@ fun VolumeBoostControl(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = "Volume Boost",
+                    contentDescription = "Volume Control",
                     tint = if (isExpanded) NeonPurple else TextSecondary,
                     modifier = Modifier.size(22.dp)
                 )
@@ -90,30 +93,67 @@ fun VolumeBoostControl(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.VolumeUp, null, tint = NeonPurple, modifier = Modifier.size(16.dp))
                         Text(
-                            text = "Volume Boost",
+                            text = "Volume",
                             color = CoreWhiteDim,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.5.sp
                         )
                     }
-                    Text(
-                        text = "${currentVolume.toInt()}%",
-                        color = NeonPurple,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "${currentVolume.coerceIn(0f, 100f).toInt()}%",
+                            color = NeonPurple,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+
+                        // If user is at 100%, show option to boost
+                        if (currentVolume >= 100f && onOpenBoosterModal != null) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(NeonPurpleFaint)
+                                    .border(1.dp, NeonPurpleLight.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        haptic.performClick()
+                                        onOpenBoosterModal()
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Bolt, null, tint = NeonPurpleLight, modifier = Modifier.size(12.dp))
+                                    Text(
+                                        text = "Boost >",
+                                        color = NeonPurpleLight,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 NeonSlider(
-                    value = currentVolume,
+                    value = currentVolume.coerceIn(0f, 100f),
                     onValueChange = { 
                         if (isFloating) onVolumeChange(it) else internalVolume = it
                     },
-                    valueRange = 0f..200f
+                    valueRange = 0f..100f
                 )
             }
         }

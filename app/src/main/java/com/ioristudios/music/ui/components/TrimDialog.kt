@@ -29,6 +29,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ioristudios.music.data.model.Song
 import com.ioristudios.music.external.ExternalSongActions
+import com.ioristudios.music.playback.PlaybackService
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.rememberHapticFeedback
 import androidx.compose.ui.platform.LocalContext
@@ -86,7 +87,10 @@ fun TrimDialog(
 
     // Animation for appearance
     var appeared by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { appeared = true }
+    LaunchedEffect(Unit) {
+        PlaybackService.pause(context)
+        appeared = true
+    }
     val scale by animateFloatAsState(
         targetValue = if (appeared) 1f else 0.9f,
         animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f)
@@ -189,8 +193,7 @@ fun TrimDialog(
                         }
                     }
 
-                    // Range Slider
-                    val stepsCount = maxOf(0, song.duration.toInt() - 1)
+                    // Range Slider - continuous dragging without expensive tick computations
                     RangeSlider(
                         value = range,
                         onValueChange = { 
@@ -208,7 +211,7 @@ fun TrimDialog(
                             isPlayingPreview = true
                         },
                         valueRange = 0f..1f,
-                        steps = stepsCount,
+                        steps = 0,
                         colors = SliderDefaults.colors(
                             thumbColor = Color.White,
                             activeTrackColor = Color.Transparent,

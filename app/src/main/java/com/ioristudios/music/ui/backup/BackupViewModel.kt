@@ -22,6 +22,20 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private val preferences = DriveBackupPreferences(application)
     private val repository = MusicRepository.getInstance(application)
     private var pendingAccessAction: ((DriveAccess) -> Unit)? = null
+    private var activeJob: kotlinx.coroutines.Job? = null
+
+    fun cancelOperation() {
+        activeJob?.cancel()
+        activeJob = null
+        _uiState.update {
+            it.copy(
+                isBusy = false,
+                isLoadingBackups = false,
+                progress = null,
+                status = "Operation cancelled"
+            )
+        }
+    }
 
     private val _uiState = MutableStateFlow(
         BackupUiState(
@@ -52,9 +66,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    fun handleAuthorizationResult(activity: Activity, data: Intent?) {
+    fun handleAuthorizationResult(activity: Activity, resultCode: Int, data: Intent?) {
         DriveAuthManager.handleAuthorizationResult(
             activity = activity,
+            resultCode = resultCode,
             data = data,
             onReady = { access ->
                 val action = pendingAccessAction
@@ -67,6 +82,102 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 showError(error)
             }
         )
+    }
+
+    fun setShowSetupGuide(show: Boolean) {
+        _uiState.update { it.copy(showSetupGuide = show) }
+    }
+
+    fun exportLocalBackup(outputStream: java.io.OutputStream) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _uiState.update { it.copy(isBusy = true, progress = "Exporting local backup...", error = null) }
+            runCatching {
+                val (songs, playlists) = repository.getBackupSnapshot()
+                val backupSongs = songs.map { song ->
+                    com.ioristudios.music.external.BackupSong(
+                        title = song.title,
+                        artist = song.artist,
+                        album = song.album,
+                        duration = song.duration,
+                        fileSize = song.fileSize,
+                        mimeType = song.mimeType.ifBlank { "audio/mpeg" },
+                        displayName = song.title + ".mp3",
+                        hash = song.hash ?: "hash_${song.id}",
+                        driveFileName = "local_${song.id}"
+                    )
+                }
+                val hashBySongId = songs.associate { it.id to (it.hash ?: "hash_${it.id}") }
+                val backupPlaylists = playlists.map { pl ->
+                    com.ioristudios.music.external.BackupPlaylist(
+                        name = pl.name,
+                        songHashes = pl.songs.mapNotNull { hashBySongId[it.id] }
+                    )
+                }
+                val manifest = com.ioristudios.music.external.BackupManifest(
+                    version = com.ioristudios.music.external.BackupManifest.CURRENT_VERSION,
+                    createdAt = System.currentTimeMillis(),
+                    songs = backupSongs,
+                    playlists = backupPlaylists
+                )
+                outputStream.bufferedWriter().use { writer ->
+                    writer.write(manifest.toJson().toString(2))
+                }
+                manifest
+            }.onSuccess { manifest ->
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        progress = null,
+                        status = "Exported ${manifest.playlists.size} playlists & ${manifest.songs.size} songs locally"
+                    )
+                }
+            }.onFailure { error ->
+                showError(error)
+            }
+        }
+    }
+
+    fun importLocalBackup(inputStream: java.io.InputStream) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _uiState.update { it.copy(isBusy = true, progress = "Importing local backup...", error = null) }
+            runCatching {
+                val json = inputStream.bufferedReader().use { it.readText() }
+                val manifest = com.ioristudios.music.external.BackupManifest.fromJson(json)
+                val (currentSongs, _) = repository.getBackupSnapshot()
+                val currentSongByTitleArtist = currentSongs.associateBy { "${it.title.lowercase()}_${it.artist.lowercase()}" }
+                val currentSongByHash = currentSongs.filter { it.hash != null }.associateBy { it.hash!! }
+
+                val restoredPlaylists = manifest.playlists.mapNotNull { bp ->
+                    val matchedSongIds = bp.songHashes.mapNotNull { hash ->
+                        currentSongByHash[hash]?.id ?: manifest.songs.find { it.hash == hash }?.let { bs ->
+                            currentSongByTitleArtist["${bs.title.lowercase()}_${bs.artist.lowercase()}"]?.id
+                        }
+                    }
+                    if (matchedSongIds.isEmpty()) null
+                    else com.ioristudios.music.external.RestoredPlaylist(
+                        name = bp.name,
+                        songIds = matchedSongIds
+                    )
+                }
+                repository.importRestoredContent(
+                    com.ioristudios.music.external.RestoredContent(
+                        songs = emptyList(),
+                        playlists = restoredPlaylists,
+                        skippedSongs = 0
+                    )
+                )
+            }.onSuccess { result ->
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        progress = null,
+                        status = "Restored ${result.restoredPlaylists} playlists locally"
+                    )
+                }
+            }.onFailure { error ->
+                showError(error)
+            }
+        }
     }
 
     fun setAutoBackupEnabled(enabled: Boolean) {
@@ -83,7 +194,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun backupNow(activity: Activity, onResolutionRequired: (PendingIntent) -> Unit) {
         requestAccess(activity, onResolutionRequired) { access ->
-            viewModelScope.launch {
+            activeJob = viewModelScope.launch {
                 _uiState.update { it.copy(isBusy = true, progress = "Preparing full library backup", error = null) }
                 runCatching {
                     val (songs, playlists) = repository.getBackupSnapshot()
@@ -116,7 +227,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun restoreLatest(activity: Activity, onResolutionRequired: (PendingIntent) -> Unit) {
         val snapshot = _uiState.value.latestBackup ?: return
         requestAccess(activity, onResolutionRequired) { access ->
-            viewModelScope.launch {
+            activeJob = viewModelScope.launch {
                 _uiState.update { it.copy(isBusy = true, progress = "Preparing restore", error = null) }
                 runCatching {
                     val content = DriveBackupManager.restoreBackup(
@@ -248,5 +359,6 @@ data class BackupUiState(
     val backups: List<BackupSnapshot> = emptyList(),
     val latestBackup: BackupSnapshot? = null,
     val lastBackupAt: Long = 0L,
-    val lastRestoreAt: Long = 0L
+    val lastRestoreAt: Long = 0L,
+    val showSetupGuide: Boolean = false
 )

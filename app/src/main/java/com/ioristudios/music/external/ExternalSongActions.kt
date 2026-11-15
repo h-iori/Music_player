@@ -150,13 +150,11 @@ object ExternalSongActions {
                 SongEditResult.Failed("MediaStore update failed. The file might be protected or the URI is invalid.")
             }
         } catch (security: SecurityException) {
-            if (hasFullAccess) {
-                SongEditResult.Failed("Access denied even with All Files Access: ${security.message}")
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && security is RecoverableSecurityException) {
-                SongEditResult.RequiresPermission(security.userAction.actionIntent)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val pendingIntent = MediaStore.createWriteRequest(context.contentResolver, listOf(uri))
                 SongEditResult.RequiresPermission(pendingIntent)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && security is RecoverableSecurityException) {
+                SongEditResult.RequiresPermission(security.userAction.actionIntent)
             } else {
                 SongEditResult.Failed(security.message ?: "Permission denied")
             }

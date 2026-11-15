@@ -10,14 +10,35 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class DriveRestClient(private val accessToken: String) {
-    fun listAppDataFiles(query: String): List<DriveFile> {
+    fun getUserEmail(): String? = runCatching {
+        val url = "https://www.googleapis.com/drive/v3/about?fields=user"
+        val json = String(request("GET", url), Charsets.UTF_8)
+        val root = JSONObject(json)
+        root.optJSONObject("user")?.optString("emailAddress")?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+
+    fun listAppDataFiles(query: String = ""): List<DriveFile> {
+        return runCatching {
+            fetchAppDataFiles(query)
+        }.getOrElse { error ->
+            // If query fails (e.g. HTTP 400 Invalid Value on q), fallback to listing all appData files
+            if (query.isNotBlank()) {
+                fetchAppDataFiles("")
+            } else {
+                throw error
+            }
+        }
+    }
+
+    private fun fetchAppDataFiles(query: String): List<DriveFile> {
         val files = mutableListOf<DriveFile>()
         var pageToken: String? = null
+        val safeQuery = query.trim()
         
         do {
-            val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
+            val qParam = if (safeQuery.isNotBlank()) "&q=" + URLEncoder.encode(safeQuery, Charsets.UTF_8.name()) else ""
             val fields = URLEncoder.encode("nextPageToken,files(id,name,modifiedTime,size)", Charsets.UTF_8.name())
-            val url = "$DRIVE_FILES?spaces=appDataFolder&q=$encodedQuery&fields=$fields&pageSize=1000" +
+            val url = "$DRIVE_FILES?spaces=appDataFolder$qParam&fields=$fields&pageSize=1000" +
                     (pageToken?.let { "&pageToken=$it" } ?: "")
             
             val json = String(request("GET", url), Charsets.UTF_8)
@@ -118,8 +139,21 @@ class DriveRestClient(private val accessToken: String) {
     }
 
     private fun request(method: String, url: String): ByteArray {
-        val connection = openConnection(url, method)
-        return connection.checkedResponse()
+        var attempt = 0
+        var backoffMs = 1000L
+        while (true) {
+            val connection = openConnection(url, method)
+            val code = connection.responseCode
+            if (code == 429 || code == 503) {
+                connection.disconnect()
+                if (++attempt <= 3) {
+                    Thread.sleep(backoffMs)
+                    backoffMs *= 2
+                    continue
+                }
+            }
+            return connection.checkedResponse()
+        }
     }
 
     private fun openConnection(url: String, method: String): HttpURLConnection =

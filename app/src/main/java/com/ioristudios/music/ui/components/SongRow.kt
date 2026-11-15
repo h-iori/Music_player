@@ -67,18 +67,12 @@ fun SongRow(
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
 
-    // Staggered Entrance Animation — runs once per item, not on every scroll recycle.
-    // Without this guard, fast scrolling launches a burst of coroutines that compete
-    // with the scroll for frame time, causing visible stutter.
-    var hasAnimated by remember(song.id) { mutableStateOf(false) }
-    val animatedProgress = remember { Animatable(0f) }
+    // Fast staggered entrance for initial viewport items; instant appearance for scrolled items
+    val animatedProgress = remember { Animatable(if (index < 10) 0f else 1f) }
     LaunchedEffect(song.id) {
-        if (!hasAnimated) {
-            delay(index.coerceAtMost(12) * 30L)
-            animatedProgress.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
-            hasAnimated = true
-        } else {
-            animatedProgress.snapTo(1f)
+        if (animatedProgress.value < 1f) {
+            delay(index.coerceAtMost(8) * 20L)
+            animatedProgress.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
         }
     }
 

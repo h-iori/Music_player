@@ -9,11 +9,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.database.ContentObserver
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
+import com.ioristudios.music.playback.volume.BoostManager
+import com.ioristudios.music.playback.volume.VolumeLevel
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.VectorDrawable
@@ -71,15 +74,23 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     // --- Bug 1 fix: delayed resume job to avoid clashing with other app's audio teardown ---
     private var focusResumeJob: Job? = null
 
-    // --- Bug 2 fix: LoudnessEnhancer for true 100-200% volume boost ---
-    private var loudnessEnhancer: LoudnessEnhancer? = null
-    // Guard flag to prevent ContentObserver feedback loop when we set system volume ourselves
+    // --- MIUI Player Reverse-Engineered BoostManager for 100-300% boost ---
+    private lateinit var boostManager: BoostManager
+    // Guard flag to prevent feedback loop when we set system volume ourselves
     private var isSettingSystemVolume = false
-    private var volumeObserver: ContentObserver? = null
+    private var volumeReceiver: BroadcastReceiver? = null
+    private var isDucked: Boolean = false
 
     private val becomingNoisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) pausePlayback()
+            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                // Safety policy: reset boost to 100% when headphones disconnected
+                if (::boostManager.isInitialized) {
+                    boostManager.safetyResetToNormal()
+                }
+                updateState(volume = 100f)
+                pausePlayback()
+            }
         }
     }
 
@@ -91,6 +102,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         super.onCreate()
         repository = MusicRepository.getInstance(this)
         audioManager = getSystemService(AudioManager::class.java)
+        boostManager = BoostManager(this)
         mediaSession = MediaSessionCompat(this, "MusicPlaybackSession").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() = resumePlayback()
@@ -100,10 +112,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
                 override fun onSeekTo(pos: Long) = seekTo((pos / 1000L).toLong())
                 override fun onStop() = stopPlayback(stopService = true)
             })
+            setQueueTitle("Current Queue")
             isActive = true
         }
         createNotificationChannel()
-        registerVolumeObserver()
+        registerVolumeReceiver()
 
         scope.launch {
             var isFirstCollection = true
@@ -133,6 +146,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_INITIALIZE -> {
+                if (_state.value.queue.isEmpty()) {
+                    restoreState(repository.songs.value)
+                }
+            }
             ACTION_PLAY_SONG -> playSongById(intent.getLongExtra(EXTRA_SONG_ID, -1L))
             ACTION_PLAY_QUEUE -> playQueue(intent.getLongArrayExtra(EXTRA_QUEUE_IDS)?.toList().orEmpty(), intent.getLongExtra(EXTRA_SONG_ID, -1L))
             ACTION_PLAY_URI -> playExternalUri(intent.data)
@@ -154,7 +172,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         if (!_state.value.isPlaying) {
             stopPlayback(stopService = true)
         } else {
-            startForeground(NOTIFICATION_ID, buildNotification())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }
         }
         super.onTaskRemoved(rootIntent)
     }
@@ -171,7 +193,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         progressJob?.cancel()
         focusResumeJob?.cancel()
         unregisterNoisyReceiver()
-        unregisterVolumeObserver()
+        unregisterVolumeReceiver()
         releaseWakeLock()
         mediaSession.release()
         releaseLoudnessEnhancer()
@@ -204,26 +226,38 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
      */
     override fun onAudioFocusChange(focusChange: Int) {
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Cancel any pending resume from a previous focus-gain
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                focusResumeJob?.cancel()
+                shouldResumeOnFocusGain = false
+                pausePlayback()
+                abandonAudioFocus()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 focusResumeJob?.cancel()
                 shouldResumeOnFocusGain = _state.value.isPlaying
                 pausePlayback()
             }
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                // Delay resume to avoid clashing with the other app's audio teardown.
-                // This is especially important for WhatsApp which may still be releasing
-                // its audio session when we receive AUDIOFOCUS_GAIN.
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 focusResumeJob?.cancel()
-                focusResumeJob = scope.launch {
-                    delay(500L)
-                    if (shouldResumeOnFocusGain) {
-                        applyVolumeBoost() // Restore volume state after interruption
-                        resumePlayback()
+                if (_state.value.isPlaying) {
+                    isDucked = true
+                    player?.setVolume(0.2f, 0.2f)
+                }
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                if (isDucked) {
+                    isDucked = false
+                    applyVolumeBoost()
+                } else {
+                    focusResumeJob?.cancel()
+                    focusResumeJob = scope.launch {
+                        delay(500L)
+                        if (shouldResumeOnFocusGain) {
+                            applyVolumeBoost() // Restore volume state after interruption
+                            resumePlayback()
+                        }
+                        shouldResumeOnFocusGain = false
                     }
-                    shouldResumeOnFocusGain = false
                 }
             }
         }
@@ -318,7 +352,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
                 applyVolumeBoost()
                 if (autoPlay && requestAudioFocus()) {
                     start()
-                    repository.recordPlayed(song.id)
+                    repository.recordPlayed(song)
                     acquireWakeLock()
                     registerNoisyReceiver()
                     startProgressUpdates()
@@ -372,7 +406,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         releaseWakeLock()
         abandonAudioFocus()
         unregisterNoisyReceiver()
-        updateState(status = PlaybackStatus.IDLE, position = 0L)
+        updateState(status = PlaybackStatus.IDLE)
         if (stopService) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -417,9 +451,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
                     updateState(queueIndex = nextIndex, shufflePosition = nextShufflePos, position = 0L, status = PlaybackStatus.LOADING)
                 }
             }
-            PlaybackMode.REPEAT -> {
-                // Keep same index
-            }
+            PlaybackMode.REPEAT,
             PlaybackMode.NORMAL -> {
                 nextIndex = if (state.queueIndex + 1 < state.queue.size) state.queueIndex + 1 else 0
                 updateState(queueIndex = nextIndex, position = 0L, status = PlaybackStatus.LOADING)
@@ -431,6 +463,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private fun skipPrevious() {
         val state = _state.value
         if (state.queue.isEmpty()) return
+
+        if (state.positionSeconds > 3L) {
+            seekTo(0L)
+            return
+        }
 
         var prevIndex = state.queueIndex
         var prevShufflePos = state.shufflePosition
@@ -471,95 +508,76 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     }
 
     private fun setVolumeBoost(volumePercent: Float) {
-        updateState(volume = volumePercent.coerceIn(0f, 200f))
+        val clamped = volumePercent.coerceIn(0f, VolumeLevel.BOOST_300.maxValue.toFloat())
+        updateState(volume = clamped)
         applyVolumeBoost()
         persistState()
     }
 
     /**
-     * BUG 2 FIX — Unified volume control calibrated to system volume.
+     * Volume control calibrated to system volume and MIUI LoudnessEnhancer architecture.
      *
-     * PREVIOUS BEHAVIOUR (broken):
-     *   val gain = (volumePercent / 100f).coerceIn(0f, 2f)
-     *   player?.setVolume(gain, gain)
-     *
-     * WHY THIS WAS BROKEN:
-     *   MediaPlayer.setVolume() only accepts values 0.0–1.0. Values above 1.0 are
-     *   silently clamped to 1.0 by Android. So the "200% boost" feature never actually
-     *   amplified anything — 100% and 200% sounded identical. Meanwhile, the hardware
-     *   volume keys were intercepted by MainActivity.onKeyDown() which consumed the
-     *   events and only updated this internal gain, preventing the system media stream
-     *   from ever changing.
-     *
-     * FIX:
-     *   0–100%  → Maps to system STREAM_MUSIC volume (0 to max). MediaPlayer.setVolume
-     *             stays at 1.0 (no attenuation). This keeps the slider calibrated with
-     *             the actual system volume — if the system is at 75%, the slider shows 75%.
-     *   100–200% → System volume stays at max. LoudnessEnhancer (standard Android audio
-     *              effect) provides real amplification: 0 mB at 100%, up to +600 mB (~2×
-     *              amplitude / +6 dB) at 200%.
+     * 0–100%   → Maps directly to system STREAM_MUSIC volume (0 to max).
+     *            MediaPlayer.setVolume stays at 1.0 (no attenuation). LoudnessEnhancer is disabled (0 mB).
+     * 101–300% → System volume stays locked at max. BoostManager enables LoudnessEnhancer
+     *            with target gain in millibels:
+     *            - 150%: +1000 mB (+10 dB)
+     *            - 200%: +2000 mB (+20 dB)
+     *            - 300%: +3000 mB (+30 dB)
      */
     private fun applyVolumeBoost() {
+        if (!::boostManager.isInitialized) return
         val volumePercent = _state.value.volumePercent
-        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-
-        if (volumePercent <= 100f) {
-            // 0–100%: Set system media volume proportionally. No LoudnessEnhancer boost.
-            val targetVol = ((volumePercent / 100f) * maxVol).toInt().coerceIn(0, maxVol)
-            isSettingSystemVolume = true
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-            isSettingSystemVolume = false
-            player?.setVolume(1f, 1f) // No attenuation — let system volume control level
-            loudnessEnhancer?.setTargetGain(0) // No boost
-        } else {
-            // 100–200%: System volume at max + LoudnessEnhancer for real amplification.
-            isSettingSystemVolume = true
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
-            isSettingSystemVolume = false
+        isSettingSystemVolume = true
+        try {
             player?.setVolume(1f, 1f)
-            // Map 100–200% linearly to 0–600 mB (+6 dB ≈ 2× amplitude at 200%)
-            val boostFraction = (volumePercent - 100f) / 100f // 0.0 to 1.0
-            val boostMb = (boostFraction * 600f).toInt()      // 0 to 600 mB
-            loudnessEnhancer?.setTargetGain(boostMb)
+            boostManager.applyVolume(volumePercent.toInt())
+        } finally {
+            isSettingSystemVolume = false
         }
     }
 
-    /** Initialize LoudnessEnhancer for the current audio session. */
+    /** Initialize LoudnessEnhancer for the current audio session via BoostManager. */
     private fun initLoudnessEnhancer(audioSessionId: Int) {
-        releaseLoudnessEnhancer()
-        if (audioSessionId == 0) return
-        try {
-            loudnessEnhancer = LoudnessEnhancer(audioSessionId).apply { enabled = true }
-        } catch (_: Exception) {
-            // Some devices may not support LoudnessEnhancer; fall back to no boost.
-            loudnessEnhancer = null
-        }
+        if (!::boostManager.isInitialized || audioSessionId == 0) return
+        boostManager.attachAudioSession(audioSessionId)
     }
 
     private fun releaseLoudnessEnhancer() {
-        runCatching { loudnessEnhancer?.release() }
-        loudnessEnhancer = null
+        if (::boostManager.isInitialized) {
+            boostManager.release()
+        }
     }
 
     /**
      * Observe system STREAM_MUSIC volume changes (from hardware keys, quick-settings, etc.)
-     * and sync the in-app slider to match. This keeps the UI calibrated with the real
-     * system volume at all times.
+     * and sync the in-app slider to match.
      */
-    private fun registerVolumeObserver() {
-        volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                syncVolumeFromSystem()
+    private fun registerVolumeReceiver() {
+        if (volumeReceiver != null) return
+        volumeReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                    val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+                    if (streamType == AudioManager.STREAM_MUSIC || streamType == -1) {
+                        syncVolumeFromSystem()
+                    }
+                }
             }
         }
-        contentResolver.registerContentObserver(
-            Settings.System.CONTENT_URI, true, volumeObserver!!
-        )
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(volumeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(volumeReceiver, filter)
+        }
     }
 
-    private fun unregisterVolumeObserver() {
-        volumeObserver?.let { contentResolver.unregisterContentObserver(it) }
-        volumeObserver = null
+    private fun unregisterVolumeReceiver() {
+        volumeReceiver?.let {
+            runCatching { unregisterReceiver(it) }
+        }
+        volumeReceiver = null
     }
 
     /**
@@ -577,7 +595,9 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         // When system volume changes externally, reset any boost and sync slider.
         val newVolumePercent = systemPercent.coerceIn(0f, 100f)
         if (kotlin.math.abs(newVolumePercent - _state.value.volumePercent) > 0.5f) {
-            loudnessEnhancer?.setTargetGain(0) // Reset boost
+            if (::boostManager.isInitialized) {
+                boostManager.applyVolume(newVolumePercent.toInt())
+            }
             updateState(volume = newVolumePercent)
         }
     }
@@ -813,7 +833,11 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
     private fun refreshNotification() {
         val notification = buildNotification()
         if (_state.value.status != PlaybackStatus.IDLE) {
-            startForeground(NOTIFICATION_ID, notification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
         } else {
             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
         }
@@ -953,6 +977,7 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         private const val KEY_SHUFFLE_POS = "shuffle_pos"
         private const val KEY_VOLUME = "volume"
 
+        private const val ACTION_INITIALIZE = "com.ioristudios.music.action.INITIALIZE"
         private const val ACTION_PLAY_SONG = "com.ioristudios.music.action.PLAY_SONG"
         private const val ACTION_PLAY_QUEUE = "com.ioristudios.music.action.PLAY_QUEUE"
         private const val ACTION_PLAY_URI = "com.ioristudios.music.action.PLAY_URI"
@@ -1005,8 +1030,16 @@ class PlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
         fun setVolume(context: Context, volumePercent: Float) =
             start(context, Intent(context, PlaybackService::class.java).setAction(ACTION_SET_VOLUME).putExtra(EXTRA_VOLUME, volumePercent))
 
+        fun initialize(context: Context) {
+            val intent = Intent(context, PlaybackService::class.java).setAction(ACTION_INITIALIZE)
+            context.startService(intent)
+        }
+
         private fun start(context: Context, intent: Intent) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val isPlayAction = intent.action in listOf(
+                ACTION_PLAY, ACTION_PLAY_SONG, ACTION_PLAY_QUEUE, ACTION_PLAY_URI, ACTION_TOGGLE, ACTION_NEXT, ACTION_PREVIOUS
+            )
+            if (isPlayAction && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ContextCompat.startForegroundService(context, intent)
             } else {
                 context.startService(intent)

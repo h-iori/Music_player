@@ -1,9 +1,33 @@
+# Gradle & Build Artifacts
+.gradle/
+build/
+app/build/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Gradle wrapper
 gradlew
 gradlew.bat
 /gradle
-/.gradle
-/app/build
-/.kotlin
-/.claude-flow
+
+# Kotlin & IDE
+.kotlin/
+.idea/
+*.iml
+.vscode/
+local.properties
+.DS_Store
+Thumbs.db
+
+# Ruflo Swarm & AI agent logs
+.swarm/
+.claude-flow/
+
+# Sensitive credentials & keys
 google-oauth.json
 client_secret_*.json
+*.keystore
+*.jks

@@ -1,5 +1,6 @@
 package com.ioristudios.music.ui.playlists
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -16,6 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,7 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ioristudios.music.data.model.Playlist
+import com.ioristudios.music.ui.components.ConfirmationDialog
 import com.ioristudios.music.ui.components.CreatePlaylistDialog
+import com.ioristudios.music.ui.components.RenamePlaylistDialog
 import com.ioristudios.music.ui.components.SelectionToolbar
 import com.ioristudios.music.ui.theme.*
 import com.ioristudios.music.ui.util.pressAnimation
@@ -46,8 +53,11 @@ fun PlaylistsScreen(
     modifier: Modifier = Modifier,
     viewModel: PlaylistsViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val haptic = rememberHapticFeedback()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var playlistToRename by remember { mutableStateOf<Playlist?>(null) }
+    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
     val playlists by viewModel.playlists.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedPlaylistIds by viewModel.selectedPlaylistIds.collectAsState()
@@ -165,6 +175,8 @@ fun PlaylistsScreen(
                                 viewModel.enterSelectionMode(playlist.id)
                             },
                             onToggleSelection = { viewModel.toggleSelection(playlist.id) },
+                            onRename = { playlistToRename = playlist },
+                            onDelete = { playlistToDelete = playlist },
                             modifier = Modifier.animateItem()
                         )
                     }
@@ -191,6 +203,39 @@ fun PlaylistsScreen(
                 }
             )
         }
+
+        if (playlistToRename != null) {
+            RenamePlaylistDialog(
+                initialName = playlistToRename!!.name,
+                onDismiss = { playlistToRename = null },
+                onRename = { newName ->
+                    viewModel.renamePlaylist(playlistToRename!!.id, newName) { success ->
+                        if (success) {
+                            Toast.makeText(context, "Playlist renamed", Toast.LENGTH_SHORT).show()
+                            playlistToRename = null
+                        } else {
+                            Toast.makeText(context, "A playlist with this name already exists", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
+        }
+
+        if (playlistToDelete != null) {
+            ConfirmationDialog(
+                title = "Delete Playlist",
+                message = "Are you sure you want to delete \"${playlistToDelete!!.name}\"?",
+                confirmText = "Delete",
+                onConfirm = {
+                    val id = playlistToDelete!!.id
+                    viewModel.deleteSelected()
+                    viewModel.enterSelectionMode(id)
+                    viewModel.deleteSelected()
+                    playlistToDelete = null
+                },
+                onDismiss = { playlistToDelete = null }
+            )
+        }
     }
 }
 
@@ -203,7 +248,9 @@ private fun PlaylistCard(
     onLongClick: () -> Unit = {},
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
-    onToggleSelection: () -> Unit = {}
+    onToggleSelection: () -> Unit = {},
+    onRename: () -> Unit = {},
+    onDelete: () -> Unit = {}
 ) {
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
@@ -272,7 +319,47 @@ private fun PlaylistCard(
             Text("${playlist.songs.size} songs", color = TextSecondary, fontSize = 13.sp)
         }
         if (!isSelectionMode) {
-            Text(playlist.createdAt, color = TextMuted, fontSize = 11.sp)
+            var menuExpanded by remember { mutableStateOf(false) }
+            Box {
+                IconButton(
+                    onClick = {
+                        haptic.performClick()
+                        menuExpanded = true
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = CoreWhiteDim.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    modifier = Modifier
+                        .background(SurfaceDarkSheet)
+                        .border(1.dp, NeonPurpleFaint, RoundedCornerShape(12.dp))
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename", color = CoreWhiteDim) },
+                        leadingIcon = { Icon(Icons.Default.Edit, null, tint = NeonPurple) },
+                        onClick = {
+                            menuExpanded = false
+                            onRename()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = Color.Red.copy(alpha = 0.85f)) },
+                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red.copy(alpha = 0.85f)) },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
         }
     }
 }
